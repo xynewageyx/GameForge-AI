@@ -13,10 +13,22 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - name: Install Android SDK packages
+      - name: Check preinstalled Android SDK
+        shell: bash
         run: |
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-unset}"
+          test -d "${ANDROID_HOME:-/nonexistent}" || { echo "::error::Android SDK missing on runner"; exit 1; }
+          command -v sdkmanager || find "$ANDROID_HOME" -name sdkmanager -type f | head
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then SDKMANAGER="$(find "$ANDROID_HOME" -name sdkmanager -type f | head -n 1)"; fi
+          test -n "$SDKMANAGER" || { echo "::error::sdkmanager not found"; exit 1; }
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
       - uses: chickensoft-games/setup-godot@v2
         with:
           version: '4.4.1'
