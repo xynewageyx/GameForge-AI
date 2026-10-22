@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+
 jobs:
   android:
     runs-on: ubuntu-latest
@@ -14,7 +15,8 @@ jobs:
           java-version: '17'
       - uses: android-actions/setup-android@v3
       - name: Install Android SDK packages
-        run: sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'
+        run: |
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
       - uses: chickensoft-games/setup-godot@v2
         with:
           version: '4.4.1'
@@ -23,12 +25,13 @@ jobs:
       - name: Configure Godot Android SDK
         run: |
           mkdir -p ~/.config/godot
-          printf '[gd_resource type="EditorSettings" format=3]
-
-[resource]
-export/android/android_sdk_path = "%s"
-export/android/java_sdk_path = "%s"
-' "$ANDROID_HOME" "$JAVA_HOME" > ~/.config/godot/editor_settings-4.tres
+          {
+            echo '[gd_resource type="EditorSettings" format=3]'
+            echo
+            echo '[resource]'
+            printf 'export/android/android_sdk_path = "%s"\n' "$ANDROID_HOME"
+            printf 'export/android/java_sdk_path = "%s"\n' "$JAVA_HOME"
+          } > ~/.config/godot/editor_settings-4.tres
       - name: Import and export
         run: |
           mkdir -p build
@@ -38,3 +41,4 @@ export/android/java_sdk_path = "%s"
         with:
           name: GameForgeAI-debug-APK
           path: build/GameForgeAI.apk
+          if-no-files-found: error
