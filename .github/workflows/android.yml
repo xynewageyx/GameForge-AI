@@ -55,6 +55,25 @@ jobs:
           mkdir -p "$HOME/.android"
           keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=GameForge AI,C=DE" -noprompt
           test -s "$HOME/.android/debug.keystore"
+      - name: Configure CI debug signing
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          preset = Path("export_presets.cfg")
+          content = preset.read_text()
+          for key, value in {
+              'keystore/debug=""': 'keystore/debug="' + os.environ["HOME"] + '/.android/debug.keystore"',
+              'keystore/debug_user=""': 'keystore/debug_user="androiddebugkey"',
+              'keystore/debug_password=""': 'keystore/debug_password="android"',
+          }.items():
+              if key not in content:
+                  raise SystemExit("Missing expected signing preset entry: " + key.split("=")[0])
+              content = content.replace(key, value)
+          preset.write_text(content)
+          print("CI debug signing configured; keystore exists:", Path(os.environ["HOME"] + "/.android/debug.keystore").is_file())
+          PY
       - name: Import Godot project
         run: |
           godot --version
