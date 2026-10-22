@@ -44,6 +44,11 @@ jobs:
             printf 'export/android/android_sdk_path = "%s"\n' "$ANDROID_HOME"
             printf 'export/android/java_sdk_path = "%s"\n' "$JAVA_HOME"
           } > ~/.config/godot/editor_settings-4.tres
+      - name: Generate Android debug keystore
+        run: |
+          mkdir -p "$HOME/.android"
+          keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=GameForge AI,C=DE" -noprompt
+          test -s "$HOME/.android/debug.keystore"
       - name: Import Godot project
         run: |
           godot --version
