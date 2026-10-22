@@ -1,0 +1,18 @@
+name: Validate Godot project
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: chickensoft-games/setup-godot@v2
+        with:
+          version: '4.4.1'
+          use-dotnet: false
+      - name: Import project
+        run: godot --headless --path . --editor --import --quit
+      - name: Parse project
+        run: godot --headless --path . --quit-after 30
