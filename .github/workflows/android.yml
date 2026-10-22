@@ -85,6 +85,14 @@ jobs:
           test -f game/main.gd
           ls -la ~/.config/godot || true
           ls -la ~/.local/share/godot/export_templates || true
+          echo "Godot Android export templates:"
+          find "$HOME/.local/share/godot/export_templates" -maxdepth 2 -iname '*android*' -print || true
+          echo "SDK package checks:"
+          ls -ld "$ANDROID_HOME/platform-tools" "$ANDROID_HOME/platforms/android-35" "$ANDROID_HOME/build-tools/35.0.0" || true
+          echo "Debug signing preset fields (password redacted):"
+          grep -E '^keystore/debug(=|_user=)' export_presets.cfg || true
+          echo "Debug keystore presence:"
+          test -s "$HOME/.android/debug.keystore" && echo "Keystore exists" || echo "Keystore missing"
       - name: Export Android debug APK
         run: |
           mkdir -p build
