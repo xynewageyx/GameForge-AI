@@ -8,12 +8,17 @@ var navigation: HFlowContainer
 var active_project: String = "GameForge AI"
 var editor: TextEdit
 var file_picker: OptionButton
+var github_path_input: LineEdit
+var github_request: HTTPRequest
 var project_names: Array[String] = ["GameForge AI", "Titan Legends", "MangaForge AI"]
 var file_names: Array[String] = ["main.gd", "notes.txt"]
 
 func _ready() -> void:
     set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     _ensure_workspace()
+    github_request = HTTPRequest.new()
+    add_child(github_request)
+    github_request.request_completed.connect(_github_response)
     _build_ui()
 
 func _build_ui() -> void:
@@ -134,6 +139,49 @@ func _save_local_file() -> void:
     file.flush()
     status.text = "Lokal gespeichert: " + filename
 
+
+func _github_repo() -> String:
+    if active_project == "Titan Legends":
+        return "xynewageyx/TitanLegend"
+    if active_project == "GameForge AI":
+        return "xynewageyx/GameForge-AI"
+    return ""
+
+func _github_load() -> void:
+    var repo := _github_repo()
+    if repo.is_empty():
+        status.text = "Kein GitHub-Repository konfiguriert."
+        return
+    var path := github_path_input.text.strip_edges().trim_prefix("/")
+    if path.is_empty() or path.contains("..") or path.contains("?"):
+        status.text = "Ungültiger Dateipfad."
+        return
+    var url := "https://api.github.com/repos/" + repo + "/contents/" + path.uri_encode().replace("%2F", "/")
+    var err := github_request.request(url, ["Accept: application/vnd.github+json", "User-Agent: GameForgeAI"])
+    status.text = "Lade GitHub-Datei..." if err == OK else "Anfrage fehlgeschlagen: " + str(err)
+
+func _github_response(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+    if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+        status.text = "GitHub-Fehler: " + str(code) + " / " + str(result)
+        return
+    var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+    if not data is Dictionary:
+        status.text = "Ungültige GitHub-Antwort."
+        return
+    if data.get("type", "") != "file" or data.get("encoding", "") != "base64":
+        status.text = "Bitte eine einzelne Textdatei wählen."
+        return
+    var encoded: String = str(data.get("content", "")).replace("\n", "").replace("\r", "")
+    var bytes := Marshalls.base64_to_raw(encoded)
+    if bytes.size() > 1048576:
+        status.text = "Datei zu groß."
+        return
+    if editor == null or not is_instance_valid(editor):
+        status.text = "Editor nicht geöffnet."
+        return
+    editor.text = bytes.get_string_from_utf8()
+    status.text = "GitHub-Datei geladen (nur lesen): " + str(data.get("path", ""))
+
 func _render_tab() -> void:
     for child in content.get_children():
         child.queue_free()
@@ -173,6 +221,13 @@ func _render_tab() -> void:
             _add_button("Datei laden", _load_local_file)
             _add_button("Lokal speichern", _save_local_file)
             _load_local_file()
+            _add_label("GitHub-Datei laden (öffentlich, nur lesen)", 19)
+            github_path_input = LineEdit.new()
+            github_path_input.placeholder_text = "z. B. project.godot"
+            github_path_input.custom_minimum_size.y = 62
+            content.add_child(github_path_input)
+            _add_label("Repository: " + _github_repo(), 17)
+            _add_button("Von GitHub laden", _github_load)
         "Builds":
             _add_label("GitHub Actions: xynewageyx/GameForge-AI")
             _add_label("APK-Build erfolgreich. Live-Status folgt.")
