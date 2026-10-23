@@ -191,6 +191,10 @@ func _select_project(name: String) -> void:
     status.text = "Aktives Projekt: " + active_project
     _render_tab()
 
+func _load_selected_file() -> void:
+    _remember_ai_draft()
+    _load_local_file()
+
 func _load_local_file() -> void:
     if editor == null or file_picker == null:
         return
@@ -279,6 +283,7 @@ func _github_repo() -> String:
     return ""
 
 func _github_load() -> void:
+    _remember_ai_draft()
     var repo := _github_repo()
     if repo.is_empty():
         status.text = "Kein GitHub-Repository konfiguriert."
@@ -930,7 +935,7 @@ func _render_tab() -> void:
             editor.size_flags_horizontal = Control.SIZE_EXPAND_FILL
             editor.add_theme_font_size_override("font_size", 20)
             content.add_child(editor)
-            _add_button("Datei laden", _load_local_file)
+            _add_button("Datei laden", _load_selected_file)
             _add_button("Lokal speichern", _save_local_file)
             _add_button("KI-Entwurf als neue Datei speichern", _save_ai_draft)
             _add_button("Ungespeicherten KI-Entwurf wieder öffnen", _restore_ai_draft)
