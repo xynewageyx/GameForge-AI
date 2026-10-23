@@ -81,13 +81,29 @@ Unter **KI-Chat** können zwei Anbindungen gewählt werden. Beide erzeugen nur *
 
 Die neue KI-Integration muss noch auf Android in beiden Modi praktisch getestet werden.
 
+## KI-Code in den lokalen Editor übernehmen
+
+Der KI-Chat kann GDScript aus einer KI-Antwort an den Code-Editor übergeben, ohne vorhandene Dateien zu überschreiben oder Code auszuführen.
+
+1. Im Bereich **Projekte** zum Beispiel **Titan Legends** aktivieren.
+2. Unter **KI-Chat** eine konkrete Frage stellen, z. B.: *Schreibe eine GDScript-Funktion zum Berechnen kritischer Treffer. Antworte mit einem gdscript-Codeblock.*
+3. Nachdem die KI geantwortet hat, **GDScript aus KI-Antwort im Editor öffnen** wählen.
+4. GameForge AI übernimmt ausschließlich den ersten vollständigen Markdown-Codeblock mit Sprache `gdscript`, `gd` oder ohne Sprachangabe. Andere Sprachen und reine Prosa werden nicht als GDScript eingefügt.
+5. Der Bereich **Code** öffnet sich mit **Aktuelle Datei: KI-Entwurf (noch nicht gespeichert)**. Den vorgeschlagenen Code prüfen und gegebenenfalls bearbeiten.
+6. **KI-Entwurf als neue Datei speichern** drücken. Die App legt eine neue Datei im Verzeichnis `user://<Projekt>/ai_drafts/ki_entwurf_YYYYMMDD_HHMMSS.gd` an. Existiert der Name bereits, wird eine freie Nummer ergänzt. Bestehende Dateien bleiben unverändert.
+7. Im Dateiauswahl-Menü können gespeicherte `ai_drafts/*.gd`-Dateien später wieder geladen und bearbeitet werden.
+
+Während der App-Sitzung kann ein noch nicht gespeicherter KI-Entwurf über **Ungespeicherten KI-Entwurf wieder öffnen** wiederhergestellt werden, auch wenn zwischen Menüs gewechselt wurde. Beim Beenden oder Deinstallieren der App gehen ungespeicherte Entwürfe beziehungsweise private App-Daten möglicherweise verloren.
+
+**Wichtig:** Die KI-Datei ist ein lokaler Textentwurf. Sie wird **nicht** automatisch in die aktive Godot-Spielszene eingebunden, nicht ausgeführt und nicht auf GitHub hochgeladen. Die KI kann Fehler enthalten; alle Codeänderungen müssen überprüft und getestet werden. Für einen anschließenden GitHub-Commit wird ein eigener, bestätigter Upload-Vorgang benötigt. Diese neue Funktion muss noch auf Android getestet werden.
+
 ## Entwicklung / Status
 
 - Godot: **4.7.2**, GL Compatibility Renderer.
 - CI: `.github/workflows/validate.yml` (Projektprüfung) und `.github/workflows/android.yml` (Android Debug APK).
 - Android-Internetberechtigung: `permissions/internet=true` in `export_presets.cfg`.
 - Der GitHub-Dateibrowser und das Laden von Titan-Legends-Textdateien wurden auf Android getestet.
-- Der authentifizierte GitHub-Schreibpfad und das manuelle Auslösen des Android-Workflows sind **neu implementiert und müssen noch auf Android getestet** werden.
+- Der authentifizierte GitHub-Schreibpfad, das manuelle Auslösen des Android-Workflows und der neue KI-Code-Entwurfseditor sind **implementiert, aber noch nicht vollständig auf Android getestet**.
 - Der KI-Chat unterstützt Gemini Developer API und eine lokale OmniRoute-Instanz über HTTPRequest; **die Anbindungen sind noch nicht auf Android praktisch bestätigt**.
 - Der vollständige Spielstand von Titan Legends (Update 168) befindet sich noch nicht vollständig im GitHub-Repository.
 
