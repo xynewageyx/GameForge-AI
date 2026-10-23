@@ -12,6 +12,10 @@ var github_path_input: LineEdit
 var github_request: HTTPRequest
 var github_list: VBoxContainer
 var github_request_mode: String = "file"
+var current_file_label: Label
+var loaded_source: String = "local"
+var github_loaded_path: String = ""
+var github_loaded_sha: String = ""
 var project_names: Array[String] = ["GameForge AI", "Titan Legends", "MangaForge AI"]
 var file_names: Array[String] = ["main.gd", "notes.txt"]
 
@@ -117,6 +121,10 @@ func _load_local_file() -> void:
     if editor == null or file_picker == null:
         return
     var filename := file_names[file_picker.selected]
+    loaded_source = "local"
+    github_loaded_path = ""
+    github_loaded_sha = ""
+    _set_current_file("Lokal: " + filename)
     var path := _workspace_path(filename)
     if not FileAccess.file_exists(path):
         editor.text = ""
@@ -132,6 +140,9 @@ func _load_local_file() -> void:
 func _save_local_file() -> void:
     if editor == null or file_picker == null:
         return
+    if loaded_source == "github":
+        status.text = "GitHub-Datei aktiv: Bitte GitHub-Kopie lokal speichern verwenden."
+        return
     var filename := file_names[file_picker.selected]
     var file := FileAccess.open(_workspace_path(filename), FileAccess.WRITE)
     if file == null:
@@ -141,6 +152,44 @@ func _save_local_file() -> void:
     file.flush()
     status.text = "Lokal gespeichert: " + filename
 
+
+func _set_current_file(value: String) -> void:
+    if current_file_label != null and is_instance_valid(current_file_label):
+        current_file_label.text = "Aktuelle Datei: " + value
+
+func _save_github_copy() -> void:
+    if editor == null or loaded_source != "github" or github_loaded_path.is_empty():
+        status.text = "Bitte zuerst eine GitHub-Textdatei laden."
+        return
+    if github_loaded_path.contains("..") or github_loaded_path.begins_with("/"):
+        status.text = "Unsicherer Dateipfad, Speichern abgebrochen."
+        return
+    var target := _workspace_path("github_import/" + github_loaded_path)
+    var folder := target.get_base_dir()
+    var dir_error := DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(folder))
+    if dir_error != OK:
+        status.text = "Lokaler Ordner konnte nicht erstellt werden."
+        return
+    var base := target.get_basename()
+    var extension := target.get_extension()
+    var candidate := target
+    var index := 1
+    while FileAccess.file_exists(candidate) and index < 100:
+        candidate = base + "_kopie_" + str(index)
+        if not extension.is_empty():
+            candidate += "." + extension
+        index += 1
+    if FileAccess.file_exists(candidate):
+        status.text = "Zu viele lokale Kopien vorhanden."
+        return
+    var file := FileAccess.open(candidate, FileAccess.WRITE)
+    if file == null:
+        status.text = "GitHub-Kopie konnte nicht gespeichert werden."
+        return
+    file.store_string(editor.text)
+    file.flush()
+    status.text = "GitHub-Kopie gesichert: " + candidate.trim_prefix("user://")
+    _set_current_file("GitHub: " + github_loaded_path + " (Kopie gespeichert)")
 
 func _github_repo() -> String:
     if active_project == "Titan Legends":
@@ -229,8 +278,16 @@ func _github_response(result: int, code: int, _headers: PackedStringArray, body:
     if editor == null or not is_instance_valid(editor):
         status.text = "Editor nicht geöffnet."
         return
-    editor.text = bytes.get_string_from_utf8()
-    status.text = "GitHub-Datei geladen (nur lesen): " + str(data.get("path", ""))
+    var file_text := bytes.get_string_from_utf8()
+    if file_text.contains("\u0000"):
+        status.text = "Binärdatei: Bitte nur Textdateien öffnen."
+        return
+    editor.text = file_text
+    loaded_source = "github"
+    github_loaded_path = str(data.get("path", ""))
+    github_loaded_sha = str(data.get("sha", ""))
+    _set_current_file("GitHub: " + github_loaded_path + " (nur lesen)")
+    status.text = "GitHub-Datei geladen: " + github_loaded_path + " (nur lesen)"
 
 func _render_tab() -> void:
     for child in content.get_children():
@@ -263,6 +320,9 @@ func _render_tab() -> void:
             for filename in file_names:
                 file_picker.add_item(filename)
             content.add_child(file_picker)
+            current_file_label = Label.new()
+            current_file_label.add_theme_font_size_override("font_size", 19)
+            content.add_child(current_file_label)
             editor = TextEdit.new()
             editor.custom_minimum_size.y = 430
             editor.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -279,6 +339,7 @@ func _render_tab() -> void:
             _add_label("Repository: " + _github_repo(), 17)
             _add_button("Von GitHub laden", _github_load)
             _add_button("GitHub-Ordner anzeigen", _github_browse)
+            _add_button("GitHub-Datei als lokale Kopie sichern", _save_github_copy)
             github_list = VBoxContainer.new()
             github_list.add_theme_constant_override("separation", 8)
             content.add_child(github_list)
