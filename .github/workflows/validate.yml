@@ -16,3 +16,5 @@ jobs:
         run: godot --headless --path . --editor --import --quit
       - name: Parse project
         run: godot --headless --path . --quit-after 30
+      - name: Test AI chat response parsing (offline)
+        run: godot --headless --path . --script res://tests/ai_chat_smoke.gd
