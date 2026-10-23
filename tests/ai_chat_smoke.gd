@@ -87,7 +87,38 @@ func _run_tests() -> void:
     if answers.size() != 3 or answers[2].get("ok", true):
         _fail("HTTP errors must not be reported as success")
         return
-    print("AI chat offline smoke tests passed: Gemini + OmniRoute + GDScript extraction + code review validation + error handling")
+    # Integration: Editor lädt lokale Datei, bereitet KI-Analyse vor – OHNE HTTP-Request.
+    var dashboard_script: Script = load("res://app/dashboard.gd")
+    if dashboard_script == null:
+        _fail("GameForge dashboard script missing")
+        return
+    var dashboard = dashboard_script.new()
+    root.add_child(dashboard)
+    dashboard._select_tab("Code")
+    var example_code := "extends Node\n\nfunc _ready() -> void:\n    print(\"Analyse\")\n"
+    dashboard.editor.text = example_code
+    dashboard._save_local_file()
+    dashboard.analysis_change_input.text = "Behalte alle vorhandenen Methoden bei und prüfe den Code"
+    dashboard._prepare_code_analysis()
+    if dashboard.selected_tab != "KI-Chat":
+        _fail("Code analysis did not open KI-Chat review")
+        return
+    if dashboard.pending_analysis.get("file", "") != "main.gd":
+        _fail("Incorrect file prepared for analysis")
+        return
+    if dashboard.ai_service.call("is_busy"):
+        _fail("Code review sent a request without confirmation")
+        return
+    dashboard._discard_pending_analysis()
+    if not dashboard.pending_analysis.is_empty():
+        _fail("Discard did not clear staged source")
+        return
+    dashboard._select_tab("Code")
+    if dashboard.editor.text != example_code:
+        _fail("Original file was not restored after review")
+        return
+    dashboard.queue_free()
+    print("AI chat offline smoke tests passed: Gemini + OmniRoute + GDScript extraction + code review staging + error handling")
     service.queue_free()
     quit(0)
 
