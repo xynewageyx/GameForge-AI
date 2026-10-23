@@ -16,6 +16,19 @@ var current_file_label: Label
 var loaded_source: String = "local"
 var github_loaded_path: String = ""
 var github_loaded_sha: String = ""
+var github_loaded_repo: String = ""
+var github_original_content: String = ""
+var github_request_repo: String = ""
+var upload_request: HTTPRequest
+var upload_token_input: LineEdit
+var upload_message_input: LineEdit
+var upload_confirm_button: Button
+var upload_preview_label: Label
+var upload_state: String = ""
+var prepared_content: String = ""
+var prepared_path: String = ""
+var prepared_repo: String = ""
+var prepared_sha: String = ""
 var project_names: Array[String] = ["GameForge AI", "Titan Legends", "MangaForge AI"]
 var file_names: Array[String] = ["main.gd", "notes.txt"]
 
@@ -25,6 +38,11 @@ func _ready() -> void:
     github_request = HTTPRequest.new()
     add_child(github_request)
     github_request.request_completed.connect(_github_response)
+    upload_request = HTTPRequest.new()
+    upload_request.max_redirects = 0
+    upload_request.timeout = 25.0
+    add_child(upload_request)
+    upload_request.request_completed.connect(_github_upload_response)
     _build_ui()
 
 func _build_ui() -> void:
@@ -80,6 +98,8 @@ func _build_ui() -> void:
     _render_tab()
 
 func _select_tab(tab: String) -> void:
+    _cancel_pending_upload()
+    github_request.cancel_request()
     selected_tab = tab
     _render_tab()
 
@@ -113,6 +133,8 @@ func _add_button(caption: String, callback: Callable) -> void:
     content.add_child(button)
 
 func _select_project(name: String) -> void:
+    _cancel_pending_upload()
+    github_request.cancel_request()
     active_project = name
     status.text = "Aktives Projekt: " + active_project
     _render_tab()
@@ -124,6 +146,9 @@ func _load_local_file() -> void:
     loaded_source = "local"
     github_loaded_path = ""
     github_loaded_sha = ""
+    github_loaded_repo = ""
+    github_original_content = ""
+    _cancel_pending_upload()
     _set_current_file("Lokal: " + filename)
     var path := _workspace_path(filename)
     if not FileAccess.file_exists(path):
@@ -209,6 +234,7 @@ func _github_load() -> void:
         return
     var url := "https://api.github.com/repos/" + repo + "/contents/" + path.uri_encode().replace("%2F", "/")
     github_request_mode = "file"
+    github_request_repo = repo
     var err := github_request.request(url, ["Accept: application/vnd.github+json", "User-Agent: GameForgeAI"])
     status.text = "Lade GitHub-Datei..." if err == OK else "Anfrage fehlgeschlagen: " + str(err)
 
@@ -222,6 +248,7 @@ func _github_browse() -> void:
         status.text = "Ungültiger Ordnerpfad."
         return
     github_request_mode = "browse"
+    github_request_repo = repo
     var url := "https://api.github.com/repos/" + repo + "/contents"
     if not path.is_empty():
         url += "/" + path.uri_encode().replace("%2F", "/")
@@ -236,6 +263,8 @@ func _github_pick(path: String, is_dir: bool) -> void:
         _github_load()
 
 func _github_response(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+    if selected_tab != "Code" or github_request_repo != _github_repo():
+        return
     if result != HTTPRequest.RESULT_SUCCESS or code != 200:
         status.text = "GitHub-Fehler: " + str(code) + " / " + str(result)
         return
@@ -286,6 +315,9 @@ func _github_response(result: int, code: int, _headers: PackedStringArray, body:
     loaded_source = "github"
     github_loaded_path = str(data.get("path", ""))
     github_loaded_sha = str(data.get("sha", ""))
+    github_loaded_repo = _github_repo()
+    github_original_content = file_text
+    _cancel_pending_upload()
     _set_current_file("GitHub: " + github_loaded_path + " (nur lesen)")
     status.text = "GitHub-Datei geladen: " + github_loaded_path + " (nur lesen)"
 
@@ -340,6 +372,28 @@ func _render_tab() -> void:
             _add_button("Von GitHub laden", _github_load)
             _add_button("GitHub-Ordner anzeigen", _github_browse)
             _add_button("GitHub-Datei als lokale Kopie sichern", _save_github_copy)
+            _add_label("Änderungen auf GitHub veröffentlichen (mit Bestätigung)", 19)
+            upload_token_input = LineEdit.new()
+            upload_token_input.secret = true
+            upload_token_input.placeholder_text = "Fine-grained GitHub-Token (nur während dieser Ansicht)"
+            upload_token_input.custom_minimum_size.y = 62
+            content.add_child(upload_token_input)
+            upload_message_input = LineEdit.new()
+            upload_message_input.placeholder_text = "Commit-Nachricht (optional)"
+            upload_message_input.custom_minimum_size.y = 62
+            content.add_child(upload_message_input)
+            _add_button("Änderung prüfen", _prepare_github_upload)
+            upload_preview_label = Label.new()
+            upload_preview_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+            upload_preview_label.add_theme_font_size_override("font_size", 19)
+            content.add_child(upload_preview_label)
+            upload_confirm_button = Button.new()
+            upload_confirm_button.text = "Hochladen verbindlich bestätigen"
+            upload_confirm_button.custom_minimum_size.y = 64
+            upload_confirm_button.disabled = true
+            upload_confirm_button.pressed.connect(_confirm_github_upload)
+            content.add_child(upload_confirm_button)
+            _add_label("Token nicht speichern oder im Chat teilen. GitHub-Zugriff: Contents (read/write) nur für das gewählte Repository.", 17)
             github_list = VBoxContainer.new()
             github_list.add_theme_constant_override("separation", 8)
             content.add_child(github_list)
