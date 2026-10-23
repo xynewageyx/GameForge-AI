@@ -239,6 +239,16 @@ func _save_local_file() -> void:
     status.text = "Lokal gespeichert: " + filename
 
 
+func _copy_current_editor_code() -> void:
+    if selected_tab != "Code" or editor == null or not is_instance_valid(editor):
+        status.text = "Code-Editor nicht geöffnet."
+        return
+    if editor.text.is_empty():
+        status.text = "Der Editor enthält noch keinen Text."
+        return
+    DisplayServer.clipboard_set(editor.text)
+    status.text = "Aktuellen Editorinhalt kopiert. Für Backup außerhalb der App einfügen."
+
 func _set_current_file(value: String) -> void:
     if current_file_label != null and is_instance_valid(current_file_label):
         current_file_label.text = "Aktuelle Datei: " + value
@@ -946,6 +956,7 @@ func _render_tab() -> void:
             _add_button("Lokal speichern", _save_local_file)
             _add_button("KI-Entwurf als neue Datei speichern", _save_ai_draft)
             _add_button("Ungespeicherten KI-Entwurf wieder öffnen", _restore_ai_draft)
+            _add_button("Editorinhalt als Backup kopieren", _copy_current_editor_code)
             _load_local_file()
             _restore_ai_draft_on_tab_open()
             _add_label("GitHub-Datei laden (öffentlich, nur lesen)", 19)
