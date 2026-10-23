@@ -10,6 +10,8 @@ var editor: TextEdit
 var file_picker: OptionButton
 var github_path_input: LineEdit
 var github_request: HTTPRequest
+var github_list: VBoxContainer
+var github_request_mode: String = "file"
 var project_names: Array[String] = ["GameForge AI", "Titan Legends", "MangaForge AI"]
 var file_names: Array[String] = ["main.gd", "notes.txt"]
 
@@ -157,21 +159,69 @@ func _github_load() -> void:
         status.text = "Ungültiger Dateipfad."
         return
     var url := "https://api.github.com/repos/" + repo + "/contents/" + path.uri_encode().replace("%2F", "/")
+    github_request_mode = "file"
     var err := github_request.request(url, ["Accept: application/vnd.github+json", "User-Agent: GameForgeAI"])
     status.text = "Lade GitHub-Datei..." if err == OK else "Anfrage fehlgeschlagen: " + str(err)
+
+func _github_browse() -> void:
+    var repo := _github_repo()
+    if repo.is_empty():
+        status.text = "Kein GitHub-Repository konfiguriert."
+        return
+    var path := github_path_input.text.strip_edges().trim_prefix("/")
+    if path.contains("..") or path.contains("?") or path.contains("#"):
+        status.text = "Ungültiger Ordnerpfad."
+        return
+    github_request_mode = "browse"
+    var url := "https://api.github.com/repos/" + repo + "/contents"
+    if not path.is_empty():
+        url += "/" + path.uri_encode().replace("%2F", "/")
+    var err := github_request.request(url, ["Accept: application/vnd.github+json", "User-Agent: GameForgeAI"])
+    status.text = "Lade Dateiliste..." if err == OK else "Anfrage fehlgeschlagen: " + str(err)
+
+func _github_pick(path: String, is_dir: bool) -> void:
+    github_path_input.text = path
+    if is_dir:
+        _github_browse()
+    else:
+        _github_load()
 
 func _github_response(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
     if result != HTTPRequest.RESULT_SUCCESS or code != 200:
         status.text = "GitHub-Fehler: " + str(code) + " / " + str(result)
         return
     var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+    if github_request_mode == "browse":
+        if not data is Array:
+            status.text = "Ordner nicht gefunden."
+            return
+        for child in github_list.get_children():
+            child.queue_free()
+        var count := 0
+        for item in data:
+            if not item is Dictionary:
+                continue
+            var kind := str(item.get("type", ""))
+            if kind != "dir" and kind != "file":
+                continue
+            var path := str(item.get("path", ""))
+            var button := Button.new()
+            button.text = ("[Ordner] " if kind == "dir" else "[Datei] ") + str(item.get("name", ""))
+            button.custom_minimum_size.y = 54
+            button.pressed.connect(_github_pick.bind(path, kind == "dir"))
+            github_list.add_child(button)
+            count += 1
+            if count >= 100:
+                break
+        status.text = "GitHub: " + str(count) + " Einträge (nur lesen)"
+        return
     if not data is Dictionary:
         status.text = "Ungültige GitHub-Antwort."
         return
     if data.get("type", "") != "file" or data.get("encoding", "") != "base64":
         status.text = "Bitte eine einzelne Textdatei wählen."
         return
-    var encoded: String = str(data.get("content", "")).replace("\n", "").replace("\r", "")
+    var encoded: String = str(data.get("content", "")).replace("\\n", "").replace("\\r", "")
     var bytes := Marshalls.base64_to_raw(encoded)
     if bytes.size() > 1048576:
         status.text = "Datei zu groß."
@@ -228,6 +278,10 @@ func _render_tab() -> void:
             content.add_child(github_path_input)
             _add_label("Repository: " + _github_repo(), 17)
             _add_button("Von GitHub laden", _github_load)
+            _add_button("GitHub-Ordner anzeigen", _github_browse)
+            github_list = VBoxContainer.new()
+            github_list.add_theme_constant_override("separation", 8)
+            content.add_child(github_list)
         "Builds":
             _add_label("GitHub Actions: xynewageyx/GameForge-AI")
             _add_label("APK-Build erfolgreich. Live-Status folgt.")
