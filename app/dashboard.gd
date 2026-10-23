@@ -1,5 +1,7 @@
 extends Control
 
+const AI_CODE_TOOLS = preload("res://app/ai_code_tools.gd")
+
 var selected_tab: String = "Projekte"
 var tabs: Array[String] = ["Projekte", "KI-Chat", "Code", "Builds", "Einstellungen"]
 var content: VBoxContainer
@@ -757,6 +759,106 @@ func _clear_ai_chat() -> void:
     if ai_chat_log != null and is_instance_valid(ai_chat_log):
         ai_chat_log.text = ""
     status.text = "KI-Chatverlauf dieser Sitzung gelöscht."
+
+func _open_ai_answer_in_editor() -> void:
+    if ai_last_answer.is_empty():
+        status.text = "Noch keine KI-Antwort vorhanden."
+        return
+    var script_text: String = AI_CODE_TOOLS.extract_first_gdscript(ai_last_answer)
+    if script_text.is_empty():
+        status.text = "Kein GDScript-Codeblock gefunden. Bitte KI um Code in einem gdscript-Block."
+        return
+    ai_draft_code = script_text
+    ai_draft_project = active_project
+    _clear_ai_key()
+    _cancel_build_confirmation()
+    _cancel_pending_upload()
+    github_request.cancel_request()
+    selected_tab = "Code"
+    _render_tab()
+    status.text = "KI-Code als Entwurf geladen. Bitte prüfen und separat speichern."
+
+func _remember_ai_draft() -> void:
+    if selected_tab == "Code" and loaded_source == "ai_draft" and ai_draft_project == active_project:
+        if editor != null and is_instance_valid(editor):
+            ai_draft_code = editor.text
+
+func _restore_ai_draft() -> void:
+    if selected_tab != "Code" or editor == null or not is_instance_valid(editor):
+        return
+    if ai_draft_project != active_project or ai_draft_code.is_empty():
+        status.text = "Kein ungespeicherter KI-Entwurf für dieses Projekt vorhanden."
+        return
+    _cancel_pending_upload()
+    loaded_source = "ai_draft"
+    editor.text = ai_draft_code
+    github_loaded_path = ""
+    github_loaded_sha = ""
+    github_loaded_repo = ""
+    github_original_content = ""
+    _set_current_file("KI-Entwurf (" + active_project + ", noch nicht gespeichert)")
+    status.text = "KI-Entwurf geöffnet. Keine vorhandene Datei verändert."
+
+func _restore_ai_draft_on_tab_open() -> void:
+    if ai_draft_project == active_project and not ai_draft_code.is_empty():
+        _restore_ai_draft()
+
+func _refresh_local_file_names() -> void:
+    file_names.clear()
+    file_names.append("main.gd")
+    file_names.append("notes.txt")
+    var drafts_dir := DirAccess.open(_workspace_path("ai_drafts"))
+    if drafts_dir == null:
+        return
+    var entries := drafts_dir.get_files()
+    entries.sort()
+    for entry in entries:
+        if entry.ends_with(".gd") and file_names.size() < 300:
+            file_names.append("ai_drafts/" + entry)
+
+func _save_ai_draft() -> void:
+    if selected_tab != "Code" or loaded_source != "ai_draft" or ai_draft_project != active_project:
+        status.text = "Bitte zuerst KI-Code als Entwurf im Editor öffnen."
+        return
+    if editor == null or not is_instance_valid(editor):
+        status.text = "Code-Editor nicht verfügbar."
+        return
+    var body := editor.text
+    if body.strip_edges().is_empty() or body.to_utf8_buffer().size() > 1048576:
+        status.text = "Der Code muss Text enthalten und darf höchstens 1 MB groß sein."
+        return
+    var dir_path := _workspace_path("ai_drafts")
+    var create_error := DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir_path))
+    if create_error != OK:
+        status.text = "Ordner für KI-Entwürfe konnte nicht erstellt werden."
+        return
+    var stamp := Time.get_datetime_string_from_system().replace("-", "").replace(":", "").replace("T", "_")
+    var stem := "ki_entwurf_" + stamp
+    var name := stem + ".gd"
+    var counter := 1
+    while FileAccess.file_exists(dir_path + "/" + name) and counter <= 999:
+        name = stem + "_" + str(counter) + ".gd"
+        counter += 1
+    if FileAccess.file_exists(dir_path + "/" + name):
+        status.text = "Kein freier Dateiname für neuen KI-Entwurf."
+        return
+    var output := FileAccess.open(dir_path + "/" + name, FileAccess.WRITE)
+    if output == null:
+        status.text = "Speichern des KI-Entwurfs fehlgeschlagen."
+        return
+    output.store_string(body)
+    output.flush()
+    output.close()
+    var relative_path := "ai_drafts/" + name
+    if not file_names.has(relative_path):
+        file_names.append(relative_path)
+        file_picker.add_item(relative_path)
+    file_picker.select(file_names.find(relative_path))
+    loaded_source = "local"
+    ai_draft_code = ""
+    ai_draft_project = ""
+    _set_current_file("Lokal: " + relative_path)
+    status.text = "KI-Entwurf als neue Datei gespeichert: " + relative_path + " (kein GitHub-Commit)"
 
 func _render_tab() -> void:
     for child in content.get_children():
