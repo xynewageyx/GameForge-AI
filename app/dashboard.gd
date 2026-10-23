@@ -51,6 +51,8 @@ var ai_active_provider: String = "omniroute"
 var ai_selected_model: String = "auto/coding"
 var ai_last_answer: String = ""
 var ai_request_project: String = ""
+var ai_draft_code: String = ""
+var ai_draft_project: String = ""
 var project_names: Array[String] = ["GameForge AI", "Titan Legends", "MangaForge AI"]
 var file_names: Array[String] = ["main.gd", "notes.txt"]
 
@@ -132,6 +134,8 @@ func _build_ui() -> void:
     _render_tab()
 
 func _select_tab(tab: String) -> void:
+    if selected_tab == "Code" and tab != selected_tab:
+        _remember_ai_draft()
     if selected_tab == "KI-Chat" and tab != selected_tab:
         _cancel_ai_request()
         _clear_ai_key()
@@ -171,6 +175,7 @@ func _add_button(caption: String, callback: Callable) -> void:
     content.add_child(button)
 
 func _select_project(name: String) -> void:
+    _remember_ai_draft()
     if name != active_project:
         _cancel_ai_request()
         _clear_ai_key()
@@ -209,6 +214,9 @@ func _load_local_file() -> void:
 
 func _save_local_file() -> void:
     if editor == null or file_picker == null:
+        return
+    if loaded_source == "ai_draft":
+        status.text = "KI-Entwurf: Bitte 'KI-Entwurf als neue Datei speichern' verwenden."
         return
     if loaded_source == "github":
         status.text = "GitHub-Datei aktiv: Bitte GitHub-Kopie lokal speichern verwenden."
@@ -800,6 +808,7 @@ func _render_tab() -> void:
             ai_send_button.pressed.connect(_send_ai_message)
             content.add_child(ai_send_button)
             _add_button("Letzte KI-Antwort kopieren", _copy_ai_answer)
+            _add_button("GDScript aus KI-Antwort im Editor öffnen", _open_ai_answer_in_editor)
             _add_button("Chatverlauf löschen", _clear_ai_chat)
             _add_label("OmniRoute: Termux-Server auf 127.0.0.1:20128 starten und ein Modell verbinden. Gemini direkt: API-Schlüssel erforderlich. Schlüssel werden nicht gespeichert.", 17)
         "Code":
@@ -807,6 +816,7 @@ func _render_tab() -> void:
             _add_label("Lokaler Code-Editor (noch keine GitHub-Synchronisierung)", 18)
             file_picker = OptionButton.new()
             file_picker.custom_minimum_size.y = 60
+            _refresh_local_file_names()
             for filename in file_names:
                 file_picker.add_item(filename)
             content.add_child(file_picker)
@@ -820,7 +830,10 @@ func _render_tab() -> void:
             content.add_child(editor)
             _add_button("Datei laden", _load_local_file)
             _add_button("Lokal speichern", _save_local_file)
+            _add_button("KI-Entwurf als neue Datei speichern", _save_ai_draft)
+            _add_button("Ungespeicherten KI-Entwurf wieder öffnen", _restore_ai_draft)
             _load_local_file()
+            _restore_ai_draft_on_tab_open()
             _add_label("GitHub-Datei laden (öffentlich, nur lesen)", 19)
             github_path_input = LineEdit.new()
             github_path_input.placeholder_text = "z. B. project.godot"
