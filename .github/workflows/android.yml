@@ -74,6 +74,13 @@ jobs:
           preset.write_text(content)
           print("CI debug signing configured; keystore exists:", Path(os.environ["HOME"] + "/.android/debug.keystore").is_file())
           PY
+      - name: Align Godot default debug keystore
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.local/share/godot/keystores"
+          cp "$HOME/.android/debug.keystore" "$HOME/.local/share/godot/keystores/debug.keystore"
+          test -s "$HOME/.local/share/godot/keystores/debug.keystore"
+          echo "Godot default debug keystore is present"
       - name: Import Godot project
         run: |
           godot --version
