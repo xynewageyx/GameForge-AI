@@ -40,13 +40,29 @@ GitHub verlangt beim Aktualisieren einer Datei ihren bisherigen Blob-SHA. Der Up
 
 **Token-Sicherheit:** Der Token wird nicht in einer lokalen Datei gespeichert oder in GitHub-Commits eingebettet. Er wird ausschließlich zur Anfrage an `https://api.github.com` verwendet und nach einem erfolgreichen Upload aus dem Eingabefeld gelöscht. Bei jedem erneuten Öffnen der Code-Ansicht muss er neu eingegeben werden. Verwende nur den kleinsten benötigten Berechtigungsumfang.
 
+## APK-Builds direkt aus der App
+
+Im Reiter **Builds** zeigt **Letzte Build-Ergebnisse abrufen** die letzten GitHub-Actions-Läufe für `xynewageyx/GameForge-AI`. Tippe auf einen Eintrag, um den entsprechenden Build im Browser zu öffnen. Dieser Lesezugriff benötigt bei einem öffentlichen Repository keinen Token.
+
+Ein neuer APK-Build kann über **Build-Auftrag prüfen** und die zweite Schaltfläche **Android-Build verbindlich starten** ausgelöst werden. Voraussetzungen:
+
+1. Erstelle einen **fine-grained GitHub-Token**, der ausschließlich `xynewageyx/GameForge-AI` umfasst, mit **Actions: Read and write**. Ein Token nur mit Contents-Rechten ist dafür nicht ausreichend.
+2. Gib den Token ausschließlich in GameForge AI unter **Builds** ein.
+3. Prüfe, dass Repository `xynewageyx/GameForge-AI`, Workflow `android.yml` und Branch `main` angezeigt werden.
+4. Bestätige den Start. GitHub antwortet bei erfolgreicher Annahme mit HTTP 204. Dies bestätigt **nur die Annahme des Auftrags**, nicht den erfolgreichen APK-Build.
+5. Lade anschließend die Build-Liste erneut. Die fertige APK findest du weiterhin auf der jeweiligen GitHub-Actions-Webseite unter **Artifacts**.
+
+Der Token wird weder in eine Datei geschrieben noch im Repository hinterlegt; die Eingabe wird beim Auslösen des Build-Auftrags geleert. Niemals Screenshots mit sichtbaren Zugangsdaten teilen.
+
+Der Builds-Reiter startet derzeit **nur** den GameForge-AI-Android-Workflow, nicht die Build-Workflows von Titan Legends. Die Funktion muss noch auf einem Android-Gerät mit gültigen Actions-Schreibrechten getestet werden.
+
 ## Entwicklung / Status
 
 - Godot: **4.7.2**, GL Compatibility Renderer.
 - CI: `.github/workflows/validate.yml` (Projektprüfung) und `.github/workflows/android.yml` (Android Debug APK).
 - Android-Internetberechtigung: `permissions/internet=true` in `export_presets.cfg`.
 - Der GitHub-Dateibrowser und das Laden von Titan-Legends-Textdateien wurden auf Android getestet.
-- Der authentifizierte GitHub-Schreibpfad ist **neu implementiert und muss noch auf Android getestet** werden.
+- Der authentifizierte GitHub-Schreibpfad und das manuelle Auslösen des Android-Workflows sind **neu implementiert und müssen noch auf Android getestet** werden.
 - Der KI-Chat ist noch nicht mit einem Backend verbunden.
 - Der vollständige Spielstand von Titan Legends (Update 168) befindet sich noch nicht vollständig im GitHub-Repository.
 
