@@ -56,6 +56,7 @@ static func build_analysis_request(file_path: String, code: String, change_reque
         "ok": true,
         "prompt": prompt,
         "file": clean_path,
+        "request": user_request,
         "characters": code.length(),
         "bytes": code.to_utf8_buffer().size()
     }
