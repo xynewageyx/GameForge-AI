@@ -913,6 +913,118 @@ func _scroll_to_top() -> void:
     if content_scroll != null and is_instance_valid(content_scroll):
         content_scroll.scroll_vertical = 0
 
+func _prepare_code_analysis() -> void:
+    if selected_tab != "Code" or editor == null or not is_instance_valid(editor):
+        status.text = "Bitte zuerst eine GDScript-Datei im Bereich Code öffnen."
+        return
+    if upload_state == "upload":
+        status.text = "Bitte zuerst den laufenden GitHub-Upload abschließen."
+        return
+    var filename := ""
+    var source_label := ""
+    if loaded_source == "github" and not github_loaded_sha.is_empty():
+        filename = github_loaded_path
+        source_label = "GitHub: " + github_loaded_repo
+    elif loaded_source == "local" and file_picker != null and file_picker.selected >= 0:
+        filename = file_names[file_picker.selected]
+        if not FileAccess.file_exists(_workspace_path(filename)):
+            status.text = "Die lokale Datei ist noch nicht gespeichert. Bitte zuerst lokal speichern."
+            return
+        source_label = "Lokaler Android-Arbeitsbereich"
+    else:
+        status.text = "Bitte eine vorhandene .gd-Datei laden; einen KI-Entwurf zuvor als neue Datei speichern."
+        return
+    var prepared: Dictionary = AI_CODE_TOOLS.build_analysis_request(
+        filename, editor.text, analysis_change_input.text
+    )
+    if not bool(prepared.get("ok", false)):
+        status.text = str(prepared.get("error", "GDScript kann nicht analysiert werden."))
+        return
+    analysis_source_snapshot = {
+        "project": active_project,
+        "source": loaded_source,
+        "file": filename,
+        "code": editor.text,
+        "github_path": github_loaded_path,
+        "github_sha": github_loaded_sha,
+        "github_repo": github_loaded_repo,
+        "github_original": github_original_content
+    }
+    pending_analysis = prepared
+    pending_analysis["project"] = active_project
+    pending_analysis["source"] = source_label
+    _cancel_pending_upload()
+    github_request.cancel_request()
+    selected_tab = "KI-Chat"
+    _render_tab()
+    status.text = "Dateianalyse vorbereitet. Anbieter prüfen und Übertragung bewusst bestätigen."
+
+func _remember_analysis_editor() -> void:
+    if analysis_source_snapshot.is_empty() or selected_tab != "Code":
+        return
+    if analysis_source_snapshot.get("project", "") != active_project:
+        return
+    if editor == null or not is_instance_valid(editor):
+        return
+    if loaded_source != str(analysis_source_snapshot.get("source", "")):
+        return
+    var old_text := str(analysis_source_snapshot.get("code", ""))
+    if old_text != editor.text:
+        analysis_source_snapshot["code"] = editor.text
+        pending_analysis.clear()
+
+func _restore_analysis_source() -> bool:
+    if analysis_source_snapshot.is_empty():
+        return false
+    if analysis_source_snapshot.get("project", "") != active_project:
+        return false
+    if editor == null or not is_instance_valid(editor):
+        return false
+    var source := str(analysis_source_snapshot.get("source", ""))
+    var filename := str(analysis_source_snapshot.get("file", ""))
+    if source == "local":
+        var index := file_names.find(filename)
+        if index < 0:
+            analysis_source_snapshot.clear()
+            return false
+        file_picker.select(index)
+    elif source != "github":
+        return false
+    editor.text = str(analysis_source_snapshot.get("code", ""))
+    loaded_source = source
+    github_loaded_path = str(analysis_source_snapshot.get("github_path", ""))
+    github_loaded_sha = str(analysis_source_snapshot.get("github_sha", ""))
+    github_loaded_repo = str(analysis_source_snapshot.get("github_repo", ""))
+    github_original_content = str(analysis_source_snapshot.get("github_original", ""))
+    _set_current_file(("GitHub: " if source == "github" else "Lokal: ") + filename + " (Analyse-Quelle)")
+    status.text = "Analysierte Originaldatei wiederhergestellt. Kein automatisches Speichern."
+    return true
+
+func _send_prepared_analysis() -> void:
+    if selected_tab != "KI-Chat" or pending_analysis.is_empty():
+        status.text = "Bitte zuerst im Code-Editor eine Analyse vorbereiten."
+        return
+    if pending_analysis.get("project", "") != active_project:
+        status.text = "Projektwechsel erkannt. Datei bitte neu auswählen."
+        return
+    var message := str(pending_analysis.get("prompt", ""))
+    var display_message := "Gezielte GDScript-Analyse: " + str(pending_analysis.get("file", "")) + \
+        " (" + str(pending_analysis.get("bytes", 0)) + " Bytes, nach ausdrücklicher Freigabe)"
+    if not _start_ai_request(message, true, display_message):
+        return
+    pending_analysis.clear()
+    # Schlüssel der Analyseanfrage sofort aus der Oberfläche entfernen.
+    _clear_ai_key()
+    _render_tab()
+    status.text = "Dateianalyse an die ausgewählte KI gesendet. Originaldatei unverändert."
+
+func _discard_pending_analysis() -> void:
+    pending_analysis.clear()
+    if selected_tab == "KI-Chat":
+        _clear_ai_key()
+        _render_tab()
+    status.text = "Analyseauftrag verworfen. Keine Datei übertragen."
+
 func _render_tab() -> void:
     call_deferred("_scroll_to_top")
     for child in content.get_children():
