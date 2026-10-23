@@ -54,6 +54,10 @@ var ai_active_provider: String = "omniroute"
 var ai_selected_model: String = "auto/coding"
 var ai_last_answer: String = ""
 var ai_request_project: String = ""
+var ai_pending_is_analysis: bool = false
+var analysis_change_input: TextEdit
+var pending_analysis: Dictionary = {}
+var analysis_source_snapshot: Dictionary = {}
 var ai_draft_code: String = ""
 var ai_draft_project: String = ""
 var project_names: Array[String] = ["GameForge AI", "Titan Legends", "MangaForge AI"]
@@ -139,6 +143,7 @@ func _build_ui() -> void:
 
 func _select_tab(tab: String) -> void:
     if selected_tab == "Code":
+        _remember_analysis_editor()
         _remember_ai_draft()
     if selected_tab == "KI-Chat" and tab != selected_tab:
         _cancel_ai_request()
@@ -181,6 +186,8 @@ func _add_button(caption: String, callback: Callable) -> void:
 func _select_project(name: String) -> void:
     _remember_ai_draft()
     if name != active_project:
+        pending_analysis.clear()
+        analysis_source_snapshot.clear()
         _cancel_ai_request()
         _clear_ai_key()
         ai_history.clear()
@@ -195,6 +202,8 @@ func _select_project(name: String) -> void:
 
 func _load_selected_file() -> void:
     _remember_ai_draft()
+    pending_analysis.clear()
+    analysis_source_snapshot.clear()
     _load_local_file()
 
 func _load_local_file() -> void:
@@ -384,6 +393,8 @@ func _github_response(result: int, code: int, _headers: PackedStringArray, body:
         status.text = "Binärdatei: Bitte nur Textdateien öffnen."
         return
     editor.text = file_text
+    pending_analysis.clear()
+    analysis_source_snapshot.clear()
     loaded_source = "github"
     github_loaded_path = str(data.get("path", ""))
     github_loaded_sha = str(data.get("sha", ""))
@@ -687,6 +698,7 @@ func _cancel_ai_request() -> void:
     if ai_service != null and ai_service.call("is_busy"):
         ai_service.call("cancel")
         ai_pending_prompt = ""
+        ai_pending_is_analysis = false
         ai_display_text += "\n[Anfrage abgebrochen]\n"
 
 func _on_ai_provider_selected(index: int) -> void:
@@ -787,6 +799,8 @@ func _open_ai_answer_in_editor() -> void:
         return
     ai_draft_code = script_text
     ai_draft_project = active_project
+    pending_analysis.clear()
+    analysis_source_snapshot.clear()
     _clear_ai_key()
     _cancel_build_confirmation()
     _cancel_pending_upload()
@@ -931,6 +945,11 @@ func _render_tab() -> void:
             ai_send_button.disabled = ai_service.call("is_busy")
             ai_send_button.pressed.connect(_send_ai_message)
             content.add_child(ai_send_button)
+            if pending_analysis.get("project", "") == active_project:
+                _add_label("Vorbereitete GDScript-Dateianalyse", 23)
+                _add_label("Datei: " + str(pending_analysis.get("file", "")) + "\nQuelle: " + str(pending_analysis.get("source", "")) + "\nUmfang: " + str(pending_analysis.get("bytes", 0)) + " Bytes. Nur wenn du bestätigst, werden dieser Code und dein Änderungswunsch an den ausgewählten KI-Anbieter gesendet. Token oder Geheimnisse vorher entfernen.", 18)
+                _add_button("Dateiinhalt und Änderungswunsch jetzt an KI senden", _send_prepared_analysis)
+                _add_button("Dateianalyse verwerfen", _discard_pending_analysis)
             _add_button("Letzte KI-Antwort kopieren", _copy_ai_answer)
             _add_button("GDScript aus KI-Antwort im Editor öffnen", _open_ai_answer_in_editor)
             _add_button("Chatverlauf löschen", _clear_ai_chat)
@@ -958,7 +977,16 @@ func _render_tab() -> void:
             _add_button("Ungespeicherten KI-Entwurf wieder öffnen", _restore_ai_draft)
             _add_button("Editorinhalt als Backup kopieren", _copy_current_editor_code)
             _load_local_file()
-            _restore_ai_draft_on_tab_open()
+            if not _restore_analysis_source():
+                _restore_ai_draft_on_tab_open()
+            _add_label("Vorhandene GDScript-Datei mit KI analysieren", 23)
+            _add_label("Der angezeigte Code (auch ungespeicherte Änderungen) wird erst nach einer weiteren Bestätigung im KI-Chat gesendet. Keine GitHub-Dateien werden dabei verändert.", 18)
+            analysis_change_input = TextEdit.new()
+            analysis_change_input.custom_minimum_size.y = 140
+            analysis_change_input.add_theme_font_size_override("font_size", 19)
+            analysis_change_input.placeholder_text = "Welche Änderung soll die KI vorschlagen? Z. B. Behebe den Fehler bei kritischen Treffern und erhalte vorhandene Funktionen."
+            content.add_child(analysis_change_input)
+            _add_button("GDScript-Analyse im KI-Chat vorbereiten", _prepare_code_analysis)
             _add_label("GitHub-Datei laden (öffentlich, nur lesen)", 19)
             github_path_input = LineEdit.new()
             github_path_input.placeholder_text = "z. B. project.godot"
