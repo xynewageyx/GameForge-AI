@@ -140,8 +140,10 @@ func _render_tab() -> void:
     _add_label(selected_tab, 30)
     match selected_tab:
         "Projekte":
-            _add_label("GameForge AI Starter\nGodot 4.7.2  |  Android")
-            _add_label("Projektverwaltung über GitHub folgt.")
+            _add_label("Aktives Projekt: " + active_project, 22)
+            for project_name in project_names:
+                _add_button(project_name, _select_project.bind(project_name))
+            _add_label("Lokale Arbeitsbereiche. GitHub-Synchronisierung folgt.", 18)
         "KI-Chat":
             _add_label("KI-Verbindung noch nicht eingerichtet.")
             var prompt := TextEdit.new()
