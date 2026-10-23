@@ -131,15 +131,82 @@ func _build_ui() -> void:
         button.pressed.connect(_select_tab.bind(tab))
         navigation.add_child(button)
 
+    var page_controls := HBoxContainer.new()
+    page_controls.add_theme_constant_override("separation", 14)
+    root.add_child(page_controls)
+    _add_scroll_action(page_controls, "▲ Seite hoch", _scroll_main_page.bind(-1))
+    _add_scroll_action(page_controls, "▼ Seite runter", _scroll_main_page.bind(1))
+
     var scroll := ScrollContainer.new()
     content_scroll = scroll
     scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    scroll.scroll_deadzone = 8
+    scroll.follow_focus = true
     root.add_child(scroll)
+    _configure_touch_scrollbar(scroll.get_v_scroll_bar())
     content = VBoxContainer.new()
     content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     content.add_theme_constant_override("separation", 16)
     scroll.add_child(content)
     _render_tab()
+
+func _add_scroll_action(parent: HBoxContainer, title_text: String, action: Callable) -> void:
+    var button := Button.new()
+    button.text = title_text
+    button.custom_minimum_size.y = 66
+    button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    button.add_theme_font_size_override("font_size", 20)
+    button.pressed.connect(action)
+    parent.add_child(button)
+
+func _configure_touch_scrollbar(bar: VScrollBar) -> void:
+    # Große Trefferfläche und sichtbarer Griff für Android-Touchbedienung.
+    bar.custom_minimum_size.x = 46
+    var track := StyleBoxFlat.new()
+    track.bg_color = Color("#1f2937")
+    track.content_margin_left = 17.0
+    track.content_margin_right = 17.0
+    bar.add_theme_stylebox_override("scroll", track)
+    var grabber := StyleBoxFlat.new()
+    grabber.bg_color = Color("#64748b")
+    grabber.content_margin_left = 17.0
+    grabber.content_margin_right = 17.0
+    grabber.set_corner_radius_all(9)
+    bar.add_theme_stylebox_override("grabber", grabber)
+    var hover := grabber.duplicate() as StyleBoxFlat
+    hover.bg_color = Color("#94a3b8")
+    bar.add_theme_stylebox_override("grabber_highlight", hover)
+    var pressed := grabber.duplicate() as StyleBoxFlat
+    pressed.bg_color = Color("#cbd5e1")
+    bar.add_theme_stylebox_override("grabber_pressed", pressed)
+
+func _scroll_main_page(direction: int) -> void:
+    if content_scroll == null or not is_instance_valid(content_scroll):
+        return
+    var bar := content_scroll.get_v_scroll_bar()
+    var max_offset := maxi(0, int(bar.max_value - bar.page))
+    var amount := maxi(240, int(content_scroll.size.y * 0.75))
+    content_scroll.scroll_vertical = clampi(content_scroll.scroll_vertical + direction * amount, 0, max_offset)
+
+func _configure_touch_text_area(area: TextEdit) -> void:
+    area.scroll_smooth = true
+    _configure_touch_scrollbar(area.get_v_scroll_bar())
+
+func _add_text_scroll_buttons(area: TextEdit, label_text: String) -> void:
+    var buttons := HBoxContainer.new()
+    buttons.add_theme_constant_override("separation", 12)
+    content.add_child(buttons)
+    _add_scroll_action(buttons, "▲ " + label_text + " hoch", _scroll_text_page.bind(area, -1))
+    _add_scroll_action(buttons, "▼ " + label_text + " runter", _scroll_text_page.bind(area, 1))
+
+func _scroll_text_page(area: TextEdit, direction: int) -> void:
+    if area == null or not is_instance_valid(area):
+        return
+    var bar := area.get_v_scroll_bar()
+    var count := maxf(6.0, float(area.get_visible_line_count() - 2))
+    var limit := maxf(0.0, bar.max_value - bar.page)
+    area.scroll_vertical = clampf(area.scroll_vertical + float(direction) * count, 0.0, limit)
 
 func _select_tab(tab: String) -> void:
     if selected_tab == "Code":
@@ -1066,11 +1133,14 @@ func _render_tab() -> void:
             ai_chat_log.editable = false
             ai_chat_log.text = ai_display_text
             content.add_child(ai_chat_log)
+            _configure_touch_text_area(ai_chat_log)
+            _add_text_scroll_buttons(ai_chat_log, "Chat")
             ai_message_input = TextEdit.new()
             ai_message_input.custom_minimum_size.y = 180
             ai_message_input.add_theme_font_size_override("font_size", 20)
             ai_message_input.placeholder_text = "Beschreibe eine Godot-Funktion oder stelle deine Frage..."
             content.add_child(ai_message_input)
+            _configure_touch_text_area(ai_message_input)
             ai_send_button = Button.new()
             ai_send_button.text = "Nachricht an KI senden"
             ai_send_button.custom_minimum_size.y = 72
@@ -1104,6 +1174,8 @@ func _render_tab() -> void:
             editor.size_flags_horizontal = Control.SIZE_EXPAND_FILL
             editor.add_theme_font_size_override("font_size", 20)
             content.add_child(editor)
+            _configure_touch_text_area(editor)
+            _add_text_scroll_buttons(editor, "Code")
             _add_button("Datei laden", _load_selected_file)
             _add_button("Lokal speichern", _save_local_file)
             _add_button("KI-Entwurf als neue Datei speichern", _save_ai_draft)
@@ -1119,6 +1191,7 @@ func _render_tab() -> void:
             analysis_change_input.add_theme_font_size_override("font_size", 19)
             analysis_change_input.placeholder_text = "Welche Änderung soll die KI vorschlagen? Z. B. Behebe den Fehler bei kritischen Treffern und erhalte vorhandene Funktionen."
             content.add_child(analysis_change_input)
+            _configure_touch_text_area(analysis_change_input)
             _add_button("GDScript-Analyse im KI-Chat vorbereiten", _prepare_code_analysis)
             _add_label("GitHub-Datei laden (öffentlich, nur lesen)", 19)
             github_path_input = LineEdit.new()
