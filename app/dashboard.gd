@@ -1080,6 +1080,7 @@ func _render_tab() -> void:
             if pending_analysis.get("project", "") == active_project:
                 _add_label("Vorbereitete GDScript-Dateianalyse", 23)
                 _add_label("Datei: " + str(pending_analysis.get("file", "")) + "\nQuelle: " + str(pending_analysis.get("source", "")) + "\nUmfang: " + str(pending_analysis.get("bytes", 0)) + " Bytes. Nur wenn du bestätigst, werden dieser Code und dein Änderungswunsch an den ausgewählten KI-Anbieter gesendet. Token oder Geheimnisse vorher entfernen.", 18)
+                _add_label("Gewünschte Änderung: " + str(pending_analysis.get("request", "")), 18)
                 _add_button("Dateiinhalt und Änderungswunsch jetzt an KI senden", _send_prepared_analysis)
                 _add_button("Dateianalyse verwerfen", _discard_pending_analysis)
             _add_button("Letzte KI-Antwort kopieren", _copy_ai_answer)
