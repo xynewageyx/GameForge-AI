@@ -136,7 +136,7 @@ func _build_ui() -> void:
     _render_tab()
 
 func _select_tab(tab: String) -> void:
-    if selected_tab == "Code" and tab != selected_tab:
+    if selected_tab == "Code":
         _remember_ai_draft()
     if selected_tab == "KI-Chat" and tab != selected_tab:
         _cancel_ai_request()
