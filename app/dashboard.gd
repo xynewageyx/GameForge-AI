@@ -5,6 +5,7 @@ const AI_CODE_TOOLS = preload("res://app/ai_code_tools.gd")
 var selected_tab: String = "Projekte"
 var tabs: Array[String] = ["Projekte", "KI-Chat", "Code", "Builds", "Einstellungen"]
 var content: VBoxContainer
+var content_scroll: ScrollContainer
 var status: Label
 var navigation: HFlowContainer
 var active_project: String = "GameForge AI"
@@ -127,6 +128,7 @@ func _build_ui() -> void:
         navigation.add_child(button)
 
     var scroll := ScrollContainer.new()
+    content_scroll = scroll
     scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
     root.add_child(scroll)
     content = VBoxContainer.new()
@@ -865,7 +867,12 @@ func _save_ai_draft() -> void:
     _set_current_file("Lokal: " + relative_path)
     status.text = "KI-Entwurf als neue Datei gespeichert: " + relative_path + " (kein GitHub-Commit)"
 
+func _scroll_to_top() -> void:
+    if content_scroll != null and is_instance_valid(content_scroll):
+        content_scroll.scroll_vertical = 0
+
 func _render_tab() -> void:
+    call_deferred("_scroll_to_top")
     for child in content.get_children():
         child.queue_free()
     _add_label(selected_tab, 30)
