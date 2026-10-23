@@ -719,52 +719,70 @@ func _update_ai_key_hint() -> void:
         ai_key_input.placeholder_text = "OmniRoute Endpoint-Key (falls erforderlich, sonst leer)"
 
 func _send_ai_message() -> void:
-    if selected_tab != "KI-Chat" or ai_service.call("is_busy"):
+    if ai_message_input == null or not is_instance_valid(ai_message_input):
         return
     var message := ai_message_input.text.strip_edges()
+    if _start_ai_request(message, false, message):
+        ai_message_input.text = ""
+
+func _start_ai_request(message: String, is_analysis: bool, display_message: String) -> bool:
+    if selected_tab != "KI-Chat" or ai_service.call("is_busy"):
+        status.text = "Es läuft bereits eine KI-Anfrage."
+        return false
     var model := ai_model_input.text.strip_edges()
     if message.is_empty():
-        status.text = "Bitte zuerst eine Nachricht eingeben."
-        return
+        status.text = "Bitte zuerst eine Nachricht oder Dateianalyse vorbereiten."
+        return false
     if message.length() > 12000:
-        status.text = "Die Nachricht darf höchstens 12.000 Zeichen haben."
-        return
+        status.text = "Die Anfrage darf höchstens 12.000 Zeichen haben."
+        return false
     if model.is_empty():
         status.text = "Bitte ein KI-Modell eingeben."
-        return
+        return false
     var key := ai_key_input.text.strip_edges()
     if ai_active_provider == "gemini" and key.is_empty():
-        status.text = "Für die direkte Gemini API ist ein API-Schlüssel erforderlich."
-        return
-    var history_to_send: Array = ai_history.duplicate(true)
-    while history_to_send.size() > 12:
-        history_to_send.pop_front()
+        status.text = "Für Gemini direkt ist ein API-Schlüssel erforderlich."
+        return false
+    var history_to_send: Array = []
+    if not is_analysis:
+        history_to_send = ai_history.duplicate(true)
+        while history_to_send.size() > 12:
+            history_to_send.pop_front()
     var err: int = ai_service.call("send", ai_active_provider, model, key, active_project, message, history_to_send)
     if err != OK:
         status.text = "KI-Anfrage konnte nicht starten (" + str(err) + "). Modell und Verbindung prüfen."
-        return
+        return false
     ai_selected_model = model
     ai_pending_prompt = message
+    ai_pending_is_analysis = is_analysis
     ai_request_project = active_project
-    ai_display_text += "\nDU:\n" + message + "\n\nKI antwortet...\n"
+    ai_display_text += "\nDU:\n" + display_message + "\n\nKI antwortet...\n"
     ai_chat_log.text = ai_display_text
-    ai_message_input.text = ""
     ai_send_button.disabled = true
-    status.text = "KI-Anfrage läuft. Warte auf die Antwort..."
+    status.text = "KI-Anfrage läuft..."
+    return true
 
 func _on_ai_answered(success: bool, answer: String) -> void:
     if ai_pending_prompt.is_empty():
         return
     var prompt := ai_pending_prompt
+    var was_analysis := ai_pending_is_analysis
     ai_pending_prompt = ""
+    ai_pending_is_analysis = false
     ai_display_text = ai_display_text.trim_suffix("\nKI antwortet...\n")
     if success:
-        ai_history.append({"role": "user", "content": prompt})
-        ai_history.append({"role": "assistant", "content": answer})
-        while ai_history.size() > 12:
-            ai_history.pop_front()
+        if was_analysis:
+            # Quelldateien nicht unbemerkt als Gesprächskontext erneut mitsenden.
+            ai_history.clear()
+        else:
+            ai_history.append({"role": "user", "content": prompt})
+            ai_history.append({"role": "assistant", "content": answer})
+            while ai_history.size() > 12:
+                ai_history.pop_front()
         ai_last_answer = answer
         ai_display_text += "\nKI:\n" + answer + "\n"
+        if was_analysis:
+            ai_display_text += "\n[Dateianalyse abgeschlossen. Quelldatei wird bei weiteren Nachrichten nicht automatisch erneut gesendet.]\n"
         status.text = "KI-Antwort empfangen. Keine Datei verändert."
     else:
         ai_display_text += "\nKI-FEHLER:\n" + answer + "\n"
