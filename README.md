@@ -77,9 +77,21 @@ Unter **KI-Chat** können zwei Anbindungen gewählt werden. Beide erzeugen nur *
 - API-Key in das geschützte Feld eingeben und eine Nachricht senden. Die App verwendet `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` und den Header `x-goog-api-key`.
 - Auch bei Gemini hängen eventuelle Kosten und Limits vom Google-Konto und vom verwendeten Modell ab.
 
-**Privatsphäre und Sicherheit:** Weder Schlüssel noch Unterhaltung werden als Dateien gespeichert oder an GitHub übertragen. Der Gesprächsverlauf bleibt nur während der geöffneten App-Sitzung im Arbeitsspeicher; beim Wechsel zwischen Projekten wird er geleert. Die Schlüssel-Eingabe wird beim Verlassen des KI-Chats gelöscht. Die Nachricht wird an den ausgewählten Dienst gesendet und kann gemäß dessen Bedingungen verarbeitet werden. Keine Passwörter, Tokens oder privaten Repository-Dateien in Nachrichten kopieren. Es werden **keine Projektdateien automatisch an die KI gesendet**, lediglich der Projektname und die von dir selbst geschriebenen Nachrichten.
+**Privatsphäre und Sicherheit:** Weder Schlüssel noch Unterhaltung werden als Dateien gespeichert oder an GitHub übertragen. Der Gesprächsverlauf bleibt nur während der geöffneten App-Sitzung im Arbeitsspeicher; beim Wechsel zwischen Projekten wird er geleert. Die Schlüssel-Eingabe wird beim Verlassen des KI-Chats gelöscht. Die Nachricht wird an den ausgewählten Dienst gesendet und kann gemäß dessen Bedingungen verarbeitet werden. Keine Passwörter, Tokens oder privaten Repository-Dateien in Nachrichten kopieren. Es werden **keine Projektdateien automatisch an die KI gesendet**: Nur beim eigens bestätigten Analyseauftrag wird zusätzlich der im Code-Editor angezeigte Dateiinhalt übertragen.
 
 Die neue KI-Integration muss noch auf Android in beiden Modi praktisch getestet werden.
+
+## Vorhandene GDScript-Datei mit KI analysieren
+
+1. Unter **Projekte** das gewünschte Projekt auswählen, z. B. **Titan Legends**.
+2. Unter **Code** eine bereits gespeicherte lokale `.gd`-Datei laden oder eine `.gd`-Datei aus GitHub öffnen. Eine unspeicherte, noch nicht existierende Datei muss zuerst lokal gesichert werden.
+3. Im Bereich **Vorhandene GDScript-Datei mit KI analysieren** die gewünschte Änderung beschreiben, beispielsweise: „Überarbeite die Berechnung kritischer Treffer, ohne andere Kampffunktionen zu verändern.“
+4. **GDScript-Analyse im KI-Chat vorbereiten** drücken. Die App prüft Dateityp, Leerinhalt und Größenlimits, erstellt einen nur im Arbeitsspeicher befindlichen Analyseauftrag und öffnet den KI-Chat.
+5. **Noch wird kein Code übertragen.** Die Vorschau zeigt Dateiname, Quelle und Anzahl der Bytes. Erst nach Auswahl des KI-Anbieters und Betätigen von **Dateiinhalt und Änderungswunsch jetzt an KI senden** gehen die Daten an OmniRoute beziehungsweise Gemini. Entferne zuvor API-Tokens, Passwörter oder sonstige Geheimnisse aus dem Code.
+6. Die KI soll Fehler/Risiken erklären, die gewünschte Änderung begründen, den vollständigen vorgeschlagenen Dateicode in einem `gdscript`-Markdown-Codeblock liefern und Tests nennen.
+7. Nach der Antwort über **GDScript aus KI-Antwort im Editor öffnen** nur den vorgeschlagenen Code als **neuen, ungespeicherten Entwurf** öffnen. Über **KI-Entwurf als neue Datei speichern** wird eine eigenständige lokale Kopie erstellt.
+
+**Wichtig:** Die Originaldatei wird durch die Analyse niemals automatisch überschrieben. GitHub-Commits erfolgen nur separat über die vorhandene bestätigte Upload-Funktion. Die KI führt vorgeschlagenen Code nicht aus. Die Quelldatei wird nicht automatisch im Chatverlauf für Folgeanfragen erneut übertragen. Der Analyseauftrag ist auf 10.000 Zeichen Quellcode und maximal 900 Zeichen Änderungswunsch begrenzt; bei längeren Dateien muss zunächst ein relevanter Ausschnitt im Editor vorbereitet werden. Die Übertragung an den KI-Anbieter kann je nach Modell Kosten verursachen. Die neue Funktion muss noch in der Android-App getestet werden.
 
 ## KI-Code in den lokalen Editor übernehmen
 
@@ -103,7 +115,7 @@ Während der App-Sitzung kann ein noch nicht gespeicherter KI-Entwurf über **Un
 - CI: `.github/workflows/validate.yml` (Projektprüfung) und `.github/workflows/android.yml` (Android Debug APK).
 - Android-Internetberechtigung: `permissions/internet=true` in `export_presets.cfg`.
 - Der GitHub-Dateibrowser und das Laden von Titan-Legends-Textdateien wurden auf Android getestet.
-- Der authentifizierte GitHub-Schreibpfad, das manuelle Auslösen des Android-Workflows und der neue KI-Code-Entwurfseditor sind **implementiert, aber noch nicht vollständig auf Android getestet**.
+- Der authentifizierte GitHub-Schreibpfad, das manuelle Auslösen des Android-Workflows, der KI-Code-Entwurfseditor und die bestätigte KI-Dateianalyse sind **implementiert, aber noch nicht vollständig auf Android getestet**.
 - Der KI-Chat unterstützt Gemini Developer API und eine lokale OmniRoute-Instanz über HTTPRequest; **die Anbindungen sind noch nicht auf Android praktisch bestätigt**.
 - Der vollständige Spielstand von Titan Legends (Update 168) befindet sich noch nicht vollständig im GitHub-Repository.
 
