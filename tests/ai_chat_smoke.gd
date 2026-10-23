@@ -1,11 +1,29 @@
 extends SceneTree
 
+const AI_CODE_TOOLS = preload("res://app/ai_code_tools.gd")
+
 var answers: Array = []
 
 func _initialize() -> void:
     call_deferred("_run_tests")
 
 func _run_tests() -> void:
+    var fence := "```"
+    var sample := "Ein Beispiel:\n" + fence + "python\nprint('skip')\n" + fence + "\n"
+    sample += fence + "gdscript\nextends Node\n\nfunc _ready() -> void:\n    print(\"OK\")\n" + fence
+    var extracted: String = AI_CODE_TOOLS.extract_first_gdscript(sample)
+    if extracted != "extends Node\n\nfunc _ready() -> void:\n    print(\"OK\")\n":
+        _fail("GDScript extraction returned unexpected code")
+        return
+    if AI_CODE_TOOLS.extract_first_gdscript("Nur ein Text ohne Codeblock") != "":
+        _fail("Plain KI text must not be injected into code editor")
+        return
+    if AI_CODE_TOOLS.extract_first_gdscript(fence + "python\nprint(1)\n" + fence) != "":
+        _fail("Non-GDScript code block must be ignored")
+        return
+    if AI_CODE_TOOLS.extract_first_gdscript(fence + "gdscript\nextends Node\n") != "":
+        _fail("Unclosed markdown code block must be rejected")
+        return
     var script_resource: Script = load("res://app/ai_chat_service.gd")
     if script_resource == null:
         _fail("AI chat service script missing")
@@ -45,7 +63,7 @@ func _run_tests() -> void:
     if answers.size() != 3 or answers[2].get("ok", true):
         _fail("HTTP errors must not be reported as success")
         return
-    print("AI chat offline smoke tests passed: Gemini + OmniRoute + error handling")
+    print("AI chat offline smoke tests passed: Gemini + OmniRoute + GDScript extraction + error handling")
     service.queue_free()
     quit(0)
 
