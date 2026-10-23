@@ -11,6 +11,18 @@ GameForge AI ist ein Godot-4.7.2-Projekt für Android. Der Quellcode wird über 
 
 **Achtung:** Die CI erzeugt aktuell pro Build einen neuen Debug-Keystore. Android kann deshalb Updates mit abweichender Signatur ablehnen. Eine Deinstallation der vorherigen Version kann erforderlich sein und löscht lokale App-Daten. Vorher lokale Dateien sichern. Dauerhafte Signierung ist noch nicht eingerichtet.
 
+## Touch-Bedienung: Scrollen auf Android
+
+Die Oberfläche hat größere Scrollbalken (mindestens 46 Godot-UI-Pixel) und eine empfindliche Touch-Wischbewegung im Hauptbereich. Rechts muss kein schmaler Griff mehr exakt getroffen werden.
+
+- Direkt unter der Menüleiste sind zwei **dauerhaft sichtbare** Tasten: **▲ Seite hoch** und **▼ Seite runter**. Diese verschieben den gesamten Hauptbereich schrittweise um etwa drei Viertel der sichtbaren Höhe.
+- Das **KI-Chatprotokoll** hat eigene Tasten **▲ Chat hoch / ▼ Chat runter**.
+- Der **GDScript-Editor** hat eigene Tasten **▲ Code hoch / ▼ Code runter**.
+- Auch die Scrollleisten innerhalb der Texteingabefelder sind verbreitert. Damit kann zwischen dem Scrollen der gesamten Seite und dem Scrollen innerhalb einer langen Datei unterschieden werden.
+- Die Textfelder und ihre bestehenden Daten bleiben dabei unverändert; die Tasten ändern nur den sichtbaren Ausschnitt.
+
+Bitte nach einem erfolgreichen GitHub-Actions-Build auf Android testen. Auf dem Handy ist das Scrollen mit dem Finger durch freie Bereiche der Seite ebenfalls möglich; innerhalb eines TextEditors scrollt man dessen Inhalt separat. Die tatsächliche Touch-Bedienbarkeit kann erst am Gerät vollständig bestätigt werden.
+
 ## Projektverwaltung und Editor
 
 - Projekt im Bereich **Projekte** auswählen (GameForge AI oder Titan Legends).
