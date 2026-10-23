@@ -1008,8 +1008,10 @@ func _send_prepared_analysis() -> void:
         status.text = "Projektwechsel erkannt. Datei bitte neu auswählen."
         return
     var message := str(pending_analysis.get("prompt", ""))
-    var display_message := "Gezielte GDScript-Analyse: " + str(pending_analysis.get("file", "")) + \
+    var display_message := (
+        "Gezielte GDScript-Analyse: " + str(pending_analysis.get("file", "")) +
         " (" + str(pending_analysis.get("bytes", 0)) + " Bytes, nach ausdrücklicher Freigabe)"
+    )
     if not _start_ai_request(message, true, display_message):
         return
     pending_analysis.clear()
