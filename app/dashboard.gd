@@ -29,6 +29,14 @@ var prepared_content: String = ""
 var prepared_path: String = ""
 var prepared_repo: String = ""
 var prepared_sha: String = ""
+var build_status_request: HTTPRequest
+var build_trigger_request: HTTPRequest
+var build_token_input: LineEdit
+var build_confirm_button: Button
+var build_info: VBoxContainer
+var build_confirmation_label: Label
+var build_ready: bool = false
+var build_in_progress: bool = false
 var project_names: Array[String] = ["GameForge AI", "Titan Legends", "MangaForge AI"]
 var file_names: Array[String] = ["main.gd", "notes.txt"]
 
@@ -43,6 +51,15 @@ func _ready() -> void:
     upload_request.timeout = 25.0
     add_child(upload_request)
     upload_request.request_completed.connect(_github_upload_response)
+    build_status_request = HTTPRequest.new()
+    build_status_request.timeout = 20.0
+    add_child(build_status_request)
+    build_status_request.request_completed.connect(_on_builds_received)
+    build_trigger_request = HTTPRequest.new()
+    build_trigger_request.timeout = 25.0
+    build_trigger_request.max_redirects = 0
+    add_child(build_trigger_request)
+    build_trigger_request.request_completed.connect(_on_build_trigger_response)
     _build_ui()
 
 func _build_ui() -> void:
@@ -98,6 +115,7 @@ func _build_ui() -> void:
     _render_tab()
 
 func _select_tab(tab: String) -> void:
+    _cancel_build_confirmation()
     _cancel_pending_upload()
     github_request.cancel_request()
     selected_tab = tab
@@ -133,6 +151,7 @@ func _add_button(caption: String, callback: Callable) -> void:
     content.add_child(button)
 
 func _select_project(name: String) -> void:
+    _cancel_build_confirmation()
     _cancel_pending_upload()
     github_request.cancel_request()
     active_project = name
@@ -556,8 +575,32 @@ func _render_tab() -> void:
             github_list.add_theme_constant_override("separation", 8)
             content.add_child(github_list)
         "Builds":
-            _add_label("GitHub Actions: xynewageyx/GameForge-AI")
-            _add_label("APK-Build erfolgreich. Live-Status folgt.")
+            _add_label("Android APK – GitHub Actions", 24)
+            _add_label("Repository: xynewageyx/GameForge-AI  |  Branch: main", 19)
+            _add_button("Letzte Build-Ergebnisse abrufen", _refresh_builds)
+            _add_button("GitHub Actions im Browser öffnen", _open_builds_in_browser)
+            build_info = VBoxContainer.new()
+            build_info.add_theme_constant_override("separation", 12)
+            content.add_child(build_info)
+            _add_label("Neuen APK-Build manuell starten", 23)
+            _add_label("Erfordert einen kurzlebigen GitHub-Token mit Actions: Read and write für GameForge-AI. Nicht im Chat teilen.", 18)
+            build_token_input = LineEdit.new()
+            build_token_input.secret = true
+            build_token_input.placeholder_text = "GitHub-Token für Actions (nicht gespeichert)"
+            build_token_input.custom_minimum_size.y = 64
+            content.add_child(build_token_input)
+            _add_button("Build-Auftrag prüfen", _prepare_build)
+            build_confirmation_label = Label.new()
+            build_confirmation_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+            build_confirmation_label.add_theme_font_size_override("font_size", 19)
+            content.add_child(build_confirmation_label)
+            build_confirm_button = Button.new()
+            build_confirm_button.text = "Android-Build verbindlich starten"
+            build_confirm_button.custom_minimum_size.y = 70
+            build_confirm_button.disabled = true
+            build_confirm_button.pressed.connect(_trigger_build)
+            content.add_child(build_confirm_button)
+            _refresh_builds()
         "Einstellungen":
             _add_label("GitHub-Repository: xynewageyx/GameForge-AI")
             _add_label("API-Schlüssel werden nicht in der App gespeichert.")
