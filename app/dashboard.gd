@@ -37,6 +37,20 @@ var build_info: VBoxContainer
 var build_confirmation_label: Label
 var build_ready: bool = false
 var build_in_progress: bool = false
+var ai_service: Node
+var ai_provider_select: OptionButton
+var ai_model_input: LineEdit
+var ai_key_input: LineEdit
+var ai_chat_log: TextEdit
+var ai_message_input: TextEdit
+var ai_send_button: Button
+var ai_history: Array = []
+var ai_display_text: String = ""
+var ai_pending_prompt: String = ""
+var ai_active_provider: String = "omniroute"
+var ai_selected_model: String = "auto/coding"
+var ai_last_answer: String = ""
+var ai_request_project: String = ""
 var project_names: Array[String] = ["GameForge AI", "Titan Legends", "MangaForge AI"]
 var file_names: Array[String] = ["main.gd", "notes.txt"]
 
@@ -60,6 +74,9 @@ func _ready() -> void:
     build_trigger_request.max_redirects = 0
     add_child(build_trigger_request)
     build_trigger_request.request_completed.connect(_on_build_trigger_response)
+    ai_service = preload("res://app/ai_chat_service.gd").new()
+    add_child(ai_service)
+    ai_service.connect("answered", Callable(self, "_on_ai_answered"))
     _build_ui()
 
 func _build_ui() -> void:
@@ -115,6 +132,9 @@ func _build_ui() -> void:
     _render_tab()
 
 func _select_tab(tab: String) -> void:
+    if selected_tab == "KI-Chat" and tab != selected_tab:
+        _cancel_ai_request()
+        _clear_ai_key()
     _cancel_build_confirmation()
     _cancel_pending_upload()
     github_request.cancel_request()
@@ -151,6 +171,12 @@ func _add_button(caption: String, callback: Callable) -> void:
     content.add_child(button)
 
 func _select_project(name: String) -> void:
+    if name != active_project:
+        _cancel_ai_request()
+        _clear_ai_key()
+        ai_history.clear()
+        ai_display_text = ""
+        ai_last_answer = ""
     _cancel_build_confirmation()
     _cancel_pending_upload()
     github_request.cancel_request()
@@ -626,6 +652,104 @@ func _on_build_trigger_response(result: int, code: int, _headers: PackedStringAr
     if selected_tab == "Builds" and build_confirmation_label != null and is_instance_valid(build_confirmation_label):
         build_confirmation_label.text = "Anfrage abgeschlossen. Build-Status mit der Schaltfläche oben aktualisieren."
 
+func _clear_ai_key() -> void:
+    if ai_key_input != null and is_instance_valid(ai_key_input):
+        ai_key_input.clear()
+
+func _cancel_ai_request() -> void:
+    if ai_service != null and ai_service.call("is_busy"):
+        ai_service.call("cancel")
+        ai_pending_prompt = ""
+        ai_display_text += "\n[Anfrage abgebrochen]\n"
+
+func _on_ai_provider_selected(index: int) -> void:
+    ai_active_provider = "omniroute" if index == 0 else "gemini"
+    ai_selected_model = "auto/coding" if index == 0 else "gemini-2.5-flash"
+    if ai_model_input != null and is_instance_valid(ai_model_input):
+        ai_model_input.text = ai_selected_model
+    _clear_ai_key()
+    _update_ai_key_hint()
+    status.text = "KI-Anbieter: " + ("OmniRoute lokal" if index == 0 else "Gemini direkt")
+
+func _update_ai_key_hint() -> void:
+    if ai_key_input == null or not is_instance_valid(ai_key_input):
+        return
+    if ai_active_provider == "gemini":
+        ai_key_input.placeholder_text = "Gemini API-Key (nur im Arbeitsspeicher)"
+    else:
+        ai_key_input.placeholder_text = "OmniRoute Endpoint-Key (falls erforderlich, sonst leer)"
+
+func _send_ai_message() -> void:
+    if selected_tab != "KI-Chat" or ai_service.call("is_busy"):
+        return
+    var message := ai_message_input.text.strip_edges()
+    var model := ai_model_input.text.strip_edges()
+    if message.is_empty():
+        status.text = "Bitte zuerst eine Nachricht eingeben."
+        return
+    if message.length() > 12000:
+        status.text = "Die Nachricht darf höchstens 12.000 Zeichen haben."
+        return
+    if model.is_empty():
+        status.text = "Bitte ein KI-Modell eingeben."
+        return
+    var key := ai_key_input.text.strip_edges()
+    if ai_active_provider == "gemini" and key.is_empty():
+        status.text = "Für die direkte Gemini API ist ein API-Schlüssel erforderlich."
+        return
+    var history_to_send: Array = ai_history.duplicate(true)
+    while history_to_send.size() > 12:
+        history_to_send.pop_front()
+    var err: int = ai_service.call("send", ai_active_provider, model, key, active_project, message, history_to_send)
+    if err != OK:
+        status.text = "KI-Anfrage konnte nicht starten (" + str(err) + "). Modell und Verbindung prüfen."
+        return
+    ai_selected_model = model
+    ai_pending_prompt = message
+    ai_request_project = active_project
+    ai_display_text += "\nDU:\n" + message + "\n\nKI antwortet...\n"
+    ai_chat_log.text = ai_display_text
+    ai_message_input.text = ""
+    ai_send_button.disabled = true
+    status.text = "KI-Anfrage läuft. Warte auf die Antwort..."
+
+func _on_ai_answered(success: bool, answer: String) -> void:
+    if ai_pending_prompt.is_empty():
+        return
+    var prompt := ai_pending_prompt
+    ai_pending_prompt = ""
+    ai_display_text = ai_display_text.trim_suffix("\nKI antwortet...\n")
+    if success:
+        ai_history.append({"role": "user", "content": prompt})
+        ai_history.append({"role": "assistant", "content": answer})
+        while ai_history.size() > 12:
+            ai_history.pop_front()
+        ai_last_answer = answer
+        ai_display_text += "\nKI:\n" + answer + "\n"
+        status.text = "KI-Antwort empfangen. Keine Datei verändert."
+    else:
+        ai_display_text += "\nKI-FEHLER:\n" + answer + "\n"
+        status.text = "KI-Anfrage fehlgeschlagen."
+    if selected_tab == "KI-Chat" and ai_chat_log != null and is_instance_valid(ai_chat_log):
+        ai_chat_log.text = ai_display_text
+        ai_send_button.disabled = false
+
+func _copy_ai_answer() -> void:
+    if ai_last_answer.is_empty():
+        status.text = "Noch keine KI-Antwort vorhanden."
+        return
+    DisplayServer.clipboard_set(ai_last_answer)
+    status.text = "Letzte KI-Antwort in Zwischenablage kopiert."
+
+func _clear_ai_chat() -> void:
+    _cancel_ai_request()
+    ai_history.clear()
+    ai_display_text = ""
+    ai_last_answer = ""
+    if ai_chat_log != null and is_instance_valid(ai_chat_log):
+        ai_chat_log.text = ""
+    status.text = "KI-Chatverlauf dieser Sitzung gelöscht."
+
 func _render_tab() -> void:
     for child in content.get_children():
         child.queue_free()
@@ -637,18 +761,47 @@ func _render_tab() -> void:
                 _add_button(project_name, _select_project.bind(project_name))
             _add_label("Lokale Arbeitsbereiche. GitHub-Synchronisierung folgt.", 18)
         "KI-Chat":
-            _add_label("KI-Verbindung noch nicht eingerichtet.")
-            var prompt := TextEdit.new()
-            prompt.custom_minimum_size.y = 240
-            prompt.add_theme_font_size_override("font_size", 22)
-            prompt.placeholder_text = "Beschreibe dein Spiel oder deine Änderung..."
-            content.add_child(prompt)
-            var send := Button.new()
-            send.text = "KI-Verbindung vorbereiten"
-            send.custom_minimum_size.y = 64
-            send.add_theme_font_size_override("font_size", 20)
-            send.pressed.connect(func(): status.text = "Noch kein KI-Backend verbunden")
-            content.add_child(send)
+            _add_label("Projekt: " + active_project, 21)
+            _add_label("KI gibt Vorschläge. Dateien und GitHub werden niemals automatisch verändert.", 18)
+            ai_provider_select = OptionButton.new()
+            ai_provider_select.custom_minimum_size.y = 64
+            ai_provider_select.add_item("OmniRoute (Termux, lokal)")
+            ai_provider_select.add_item("Gemini API (Google direkt)")
+            ai_provider_select.select(0 if ai_active_provider == "omniroute" else 1)
+            ai_provider_select.item_selected.connect(_on_ai_provider_selected)
+            content.add_child(ai_provider_select)
+            ai_model_input = LineEdit.new()
+            ai_model_input.custom_minimum_size.y = 64
+            ai_model_input.placeholder_text = "Modell, z. B. auto/coding"
+            ai_model_input.text = ai_selected_model
+            content.add_child(ai_model_input)
+            ai_key_input = LineEdit.new()
+            ai_key_input.secret = true
+            ai_key_input.custom_minimum_size.y = 64
+            content.add_child(ai_key_input)
+            _update_ai_key_hint()
+            ai_chat_log = TextEdit.new()
+            ai_chat_log.custom_minimum_size.y = 360
+            ai_chat_log.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+            ai_chat_log.add_theme_font_size_override("font_size", 20)
+            ai_chat_log.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+            ai_chat_log.editable = false
+            ai_chat_log.text = ai_display_text
+            content.add_child(ai_chat_log)
+            ai_message_input = TextEdit.new()
+            ai_message_input.custom_minimum_size.y = 180
+            ai_message_input.add_theme_font_size_override("font_size", 20)
+            ai_message_input.placeholder_text = "Beschreibe eine Godot-Funktion oder stelle deine Frage..."
+            content.add_child(ai_message_input)
+            ai_send_button = Button.new()
+            ai_send_button.text = "Nachricht an KI senden"
+            ai_send_button.custom_minimum_size.y = 72
+            ai_send_button.disabled = ai_service.call("is_busy")
+            ai_send_button.pressed.connect(_send_ai_message)
+            content.add_child(ai_send_button)
+            _add_button("Letzte KI-Antwort kopieren", _copy_ai_answer)
+            _add_button("Chatverlauf löschen", _clear_ai_chat)
+            _add_label("OmniRoute: Termux-Server auf 127.0.0.1:20128 starten und ein Modell verbinden. Gemini direkt: API-Schlüssel erforderlich. Schlüssel werden nicht gespeichert.", 17)
         "Code":
             _add_label("Projekt: " + active_project, 20)
             _add_label("Lokaler Code-Editor (noch keine GitHub-Synchronisierung)", 18)
