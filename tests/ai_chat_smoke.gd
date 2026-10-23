@@ -24,6 +24,30 @@ func _run_tests() -> void:
     if AI_CODE_TOOLS.extract_first_gdscript(fence + "gdscript\nextends Node\n") != "":
         _fail("Unclosed markdown code block must be rejected")
         return
+    var gd_source := "extends Node\n\nfunc _ready() -> void:\n    print(\"Test\")\n"
+    var review: Dictionary = AI_CODE_TOOLS.build_analysis_request("scripts/player.gd", gd_source, "Kritische Treffer sicher berechnen")
+    if not bool(review.get("ok", false)):
+        _fail("Valid GDScript analysis request was rejected")
+        return
+    var prompt := str(review.get("prompt", ""))
+    if prompt.length() > 12000 or not prompt.contains("Kritische Treffer") or not prompt.contains("extends Node"):
+        _fail("GDScript review prompt missing code or request")
+        return
+    if AI_CODE_TOOLS.build_analysis_request("README.md", gd_source, "Analysiere").get("ok", false):
+        _fail("Non-GDScript file must not be sent for code analysis")
+        return
+    if AI_CODE_TOOLS.build_analysis_request("player.gd", "", "Analysiere").get("ok", false):
+        _fail("Empty GDScript must not be sent")
+        return
+    if AI_CODE_TOOLS.build_analysis_request("player.gd", gd_source, "").get("ok", false):
+        _fail("Missing change request must not be sent")
+        return
+    if AI_CODE_TOOLS.build_analysis_request("player.gd", "a".repeat(10001), "Analysiere").get("ok", false):
+        _fail("Oversize source must not be sent")
+        return
+    if AI_CODE_TOOLS.build_analysis_request("player.gd", gd_source, "a".repeat(901)).get("ok", false):
+        _fail("Oversize instructions must not be sent")
+        return
     var script_resource: Script = load("res://app/ai_chat_service.gd")
     if script_resource == null:
         _fail("AI chat service script missing")
@@ -63,7 +87,7 @@ func _run_tests() -> void:
     if answers.size() != 3 or answers[2].get("ok", true):
         _fail("HTTP errors must not be reported as success")
         return
-    print("AI chat offline smoke tests passed: Gemini + OmniRoute + GDScript extraction + error handling")
+    print("AI chat offline smoke tests passed: Gemini + OmniRoute + GDScript extraction + code review validation + error handling")
     service.queue_free()
     quit(0)
 
