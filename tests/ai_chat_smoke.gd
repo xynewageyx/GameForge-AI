@@ -94,7 +94,20 @@ func _run_tests() -> void:
         return
     var dashboard = dashboard_script.new()
     root.add_child(dashboard)
+    if dashboard.content_scroll.get_v_scroll_bar().custom_minimum_size.x < 44.0:
+        _fail("Main Android scrollbar is too narrow for touch")
+        return
+    if dashboard.content_scroll.scroll_deadzone > 12:
+        _fail("Touch scroll deadzone too large")
+        return
     dashboard._select_tab("Code")
+    if dashboard.editor.get_v_scroll_bar().custom_minimum_size.x < 44.0:
+        _fail("Code editor scrollbar is too narrow for touch")
+        return
+    dashboard._scroll_main_page(1)
+    dashboard._scroll_main_page(-1)
+    dashboard._scroll_text_page(dashboard.editor, 1)
+    dashboard._scroll_text_page(dashboard.editor, -1)
     var example_code := "extends Node\n\nfunc _ready() -> void:\n    print(\"Analyse\")\n"
     dashboard.editor.text = example_code
     dashboard._save_local_file()
@@ -117,8 +130,14 @@ func _run_tests() -> void:
     if dashboard.editor.text != example_code:
         _fail("Original file was not restored after review")
         return
+    dashboard._select_tab("KI-Chat")
+    if dashboard.ai_chat_log.get_v_scroll_bar().custom_minimum_size.x < 44.0:
+        _fail("Chat history scrollbar is too narrow for touch")
+        return
+    dashboard._scroll_text_page(dashboard.ai_chat_log, 1)
+    dashboard._scroll_text_page(dashboard.ai_chat_log, -1)
     dashboard.queue_free()
-    print("AI chat offline smoke tests passed: Gemini + OmniRoute + GDScript extraction + code review staging + error handling")
+    print("AI chat offline smoke tests passed: Gemini + OmniRoute + touch scrolling + code review staging + error handling")
     service.queue_free()
     quit(0)
 
