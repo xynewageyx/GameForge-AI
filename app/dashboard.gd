@@ -321,6 +321,164 @@ func _github_response(result: int, code: int, _headers: PackedStringArray, body:
     _set_current_file("GitHub: " + github_loaded_path + " (nur lesen)")
     status.text = "GitHub-Datei geladen: " + github_loaded_path + " (nur lesen)"
 
+func _cancel_pending_upload() -> void:
+    if upload_state == "upload":
+        return
+    if upload_state == "preflight":
+        upload_request.cancel_request()
+    upload_state = ""
+    prepared_content = ""
+    prepared_path = ""
+    prepared_repo = ""
+    prepared_sha = ""
+    if upload_confirm_button != null and is_instance_valid(upload_confirm_button):
+        upload_confirm_button.disabled = true
+    if upload_preview_label != null and is_instance_valid(upload_preview_label):
+        upload_preview_label.text = ""
+
+func _github_upload_url(repo: String, path: String) -> String:
+    return "https://api.github.com/repos/" + repo + "/contents/" + path.uri_encode().replace("%2F", "/")
+
+func _prepare_github_upload() -> void:
+    if upload_state != "":
+        status.text = "Es läuft bereits eine GitHub-Anfrage."
+        return
+    if editor == null or loaded_source != "github" or github_loaded_sha.is_empty():
+        status.text = "Bitte zuerst eine GitHub-Datei im Editor öffnen."
+        return
+    if github_loaded_repo != _github_repo() or github_loaded_path.is_empty():
+        status.text = "Repository gewechselt. GitHub-Datei bitte neu öffnen."
+        return
+    if github_loaded_path.contains("..") or github_loaded_path.begins_with("/"):
+        status.text = "Unsicherer GitHub-Dateipfad."
+        return
+    if editor.text == github_original_content:
+        status.text = "Keine Änderungen zum Hochladen vorhanden."
+        return
+    var new_size := editor.text.to_utf8_buffer().size()
+    if new_size > 1048576:
+        status.text = "Datei zu groß: maximal 1 MB."
+        return
+    var token := upload_token_input.text.strip_edges()
+    if token.is_empty() or token.contains("\n") or token.contains("\r"):
+        status.text = "Bitte gültigen GitHub-Token eingeben."
+        return
+    prepared_repo = github_loaded_repo
+    prepared_path = github_loaded_path
+    prepared_sha = github_loaded_sha
+    prepared_content = editor.text
+    upload_state = "preflight"
+    upload_confirm_button.disabled = true
+    upload_preview_label.text = "Prüfe aktuelle Dateiversion auf GitHub..."
+    var headers := ["Accept: application/vnd.github+json", "User-Agent: GameForgeAI", "Authorization: Bearer " + token]
+    var err := upload_request.request(_github_upload_url(prepared_repo, prepared_path), headers)
+    if err != OK:
+        _cancel_pending_upload()
+        status.text = "GitHub-Prüfung fehlgeschlagen: " + str(err)
+        return
+    status.text = "Prüfe GitHub-Version der Datei..."
+
+func _confirm_github_upload() -> void:
+    if upload_state != "ready" or upload_confirm_button == null or upload_confirm_button.disabled:
+        return
+    if selected_tab != "Code" or editor == null or editor.text != prepared_content:
+        _cancel_pending_upload()
+        status.text = "Editorinhalt wurde verändert. Upload bitte erneut prüfen."
+        return
+    if _github_repo() != prepared_repo or github_loaded_sha != prepared_sha:
+        _cancel_pending_upload()
+        status.text = "Projekt oder Dateiversion hat sich geändert. Erneut laden."
+        return
+    var token := upload_token_input.text.strip_edges()
+    if token.is_empty() or token.contains("\n") or token.contains("\r"):
+        _cancel_pending_upload()
+        status.text = "GitHub-Token fehlt."
+        return
+    var message := upload_message_input.text.strip_edges()
+    if message.is_empty():
+        message = "GameForge AI: " + prepared_path.get_file() + " aktualisieren"
+    if message.length() > 200:
+        _cancel_pending_upload()
+        status.text = "Commit-Nachricht zu lang (maximal 200 Zeichen)."
+        return
+    var payload := JSON.stringify({
+        "message": message,
+        "content": Marshalls.raw_to_base64(prepared_content.to_utf8_buffer()),
+        "sha": prepared_sha
+    })
+    var headers := ["Accept: application/vnd.github+json", "Content-Type: application/json", "User-Agent: GameForgeAI", "Authorization: Bearer " + token]
+    upload_state = "upload"
+    upload_confirm_button.disabled = true
+    upload_preview_label.text = "Sende bestätigte Änderung. App nicht schließen."
+    var err := upload_request.request(_github_upload_url(prepared_repo, prepared_path), headers, HTTPClient.METHOD_PUT, payload)
+    if err != OK:
+        upload_state = ""
+        status.text = "Upload-Anfrage fehlgeschlagen: " + str(err)
+        upload_preview_label.text = "Nicht gesendet. Erneut prüfen."
+        return
+    status.text = "Übertrage Änderung nach GitHub..."
+
+func _github_upload_response(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+    var stage := upload_state
+    if stage != "preflight" and stage != "upload":
+        return
+    if result != HTTPRequest.RESULT_SUCCESS:
+        upload_state = ""
+        status.text = "Netzwerkfehler bei GitHub: " + str(result) + ". Status im Browser überprüfen."
+        if upload_preview_label != null and is_instance_valid(upload_preview_label):
+            upload_preview_label.text = "Anfrage nicht bestätigt."
+        return
+    var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+    if stage == "preflight":
+        if code != 200 or not data is Dictionary:
+            _cancel_pending_upload()
+            status.text = "Versionsprüfung HTTP " + str(code) + ". Token und Berechtigungen prüfen."
+            return
+        var remote_sha := str(data.get("sha", ""))
+        if remote_sha.is_empty() or remote_sha != prepared_sha:
+            _cancel_pending_upload()
+            status.text = "Konflikt: Datei wurde auf GitHub geändert. Bitte neu laden."
+            return
+        upload_state = "ready"
+        upload_confirm_button.disabled = false
+        upload_preview_label.text = "Bereit zum Hochladen:\nRepository: " + prepared_repo + "\nDatei: " + prepared_path + "\nGitHub-Version: " + prepared_sha.substr(0, 12) + "\nGröße: " + str(prepared_content.to_utf8_buffer().size()) + " Bytes\nErst mit 'Hochladen verbindlich bestätigen' wird ein Commit erstellt."
+        status.text = "Dateiversion geprüft. Bestätigung erforderlich."
+        return
+    upload_state = ""
+    if code != 200 and code != 201:
+        var message := ""
+        if data is Dictionary:
+            message = str(data.get("message", ""))
+        if code == 409 or code == 422:
+            status.text = "GitHub-Konflikt (HTTP " + str(code) + "). Datei neu laden und Änderungen vergleichen."
+        elif code == 401 or code == 403:
+            status.text = "GitHub HTTP " + str(code) + ": Token oder Contents-Schreibrecht prüfen."
+        else:
+            status.text = "GitHub-Upload fehlgeschlagen: HTTP " + str(code)
+        if upload_preview_label != null and is_instance_valid(upload_preview_label):
+            upload_preview_label.text = "Kein erfolgreicher Commit bestätigt. " + message.substr(0, 150)
+        return
+    if not data is Dictionary:
+        status.text = "Antwort unklar. Commit bitte im GitHub-Browser prüfen."
+        return
+    var content_info: Variant = data.get("content", {})
+    if not content_info is Dictionary:
+        status.text = "Upload-Antwort unvollständig. Commit bitte bei GitHub prüfen."
+        return
+    var new_sha := str(content_info.get("sha", ""))
+    if new_sha.is_empty():
+        status.text = "Neuer Datei-Hash fehlt. Commit bei GitHub prüfen."
+        return
+    if github_loaded_repo == prepared_repo and github_loaded_path == prepared_path and loaded_source == "github":
+        github_loaded_sha = new_sha
+        github_original_content = prepared_content
+        _set_current_file("GitHub: " + github_loaded_path + " (hochgeladen)")
+    if upload_token_input != null and is_instance_valid(upload_token_input):
+        upload_token_input.clear()
+    if upload_preview_label != null and is_instance_valid(upload_preview_label):
+        upload_preview_label.text = "Erfolgreich! GitHub-Datei aktualisiert. Token-Eingabe geleert."
+    status.text = "GitHub-Commit erfolgreich: " + prepared_path
+
 func _render_tab() -> void:
     for child in content.get_children():
         child.queue_free()
