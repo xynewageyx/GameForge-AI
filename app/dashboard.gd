@@ -498,6 +498,134 @@ func _github_upload_response(result: int, code: int, _headers: PackedStringArray
         upload_preview_label.text = "Erfolgreich! GitHub-Datei aktualisiert. Token-Eingabe geleert."
     status.text = "GitHub-Commit erfolgreich: " + prepared_path
 
+func _cancel_build_confirmation() -> void:
+    build_ready = false
+    if build_confirm_button != null and is_instance_valid(build_confirm_button):
+        build_confirm_button.disabled = true
+    if build_confirmation_label != null and is_instance_valid(build_confirmation_label):
+        build_confirmation_label.text = ""
+    if build_token_input != null and is_instance_valid(build_token_input):
+        build_token_input.clear()
+
+func _open_builds_in_browser() -> void:
+    OS.shell_open("https://github.com/xynewageyx/GameForge-AI/actions/workflows/android.yml")
+
+func _open_specific_build(run_id: int) -> void:
+    if run_id > 0:
+        OS.shell_open("https://github.com/xynewageyx/GameForge-AI/actions/runs/" + str(run_id))
+
+func _refresh_builds() -> void:
+    if selected_tab != "Builds":
+        return
+    var url := "https://api.github.com/repos/xynewageyx/GameForge-AI/actions/workflows/android.yml/runs?per_page=5"
+    var headers := ["Accept: application/vnd.github+json", "User-Agent: GameForgeAI"]
+    var err := build_status_request.request(url, headers)
+    if err != OK:
+        status.text = "Build-Liste konnte nicht gestartet werden: " + str(err)
+        return
+    status.text = "Lade aktuelle GitHub-Builds..."
+
+func _on_builds_received(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+    if selected_tab != "Builds" or build_info == null or not is_instance_valid(build_info):
+        return
+    for child in build_info.get_children():
+        child.queue_free()
+    if result != HTTPRequest.RESULT_SUCCESS:
+        status.text = "GitHub-Build-Liste: Netzwerkfehler " + str(result)
+        return
+    if code != 200:
+        status.text = "GitHub-Build-Liste: HTTP " + str(code) + " (ggf. Rate-Limit)."
+        return
+    var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+    if not data is Dictionary:
+        status.text = "GitHub-Build-Liste: ungültige Antwort."
+        return
+    var runs: Variant = data.get("workflow_runs", [])
+    if not runs is Array:
+        status.text = "GitHub: Keine gültige Build-Liste erhalten."
+        return
+    var shown := 0
+    for run in runs:
+        if not run is Dictionary:
+            continue
+        var run_id := int(run.get("id", 0))
+        if run_id <= 0:
+            continue
+        var state := str(run.get("status", "unknown"))
+        var conclusion := str(run.get("conclusion", ""))
+        if conclusion != "" and conclusion != "<null>":
+            state += " / " + conclusion
+        var time_value := str(run.get("created_at", ""))
+        var button := Button.new()
+        button.text = "#" + str(run.get("run_number", run_id)) + "  " + state + "\n" + time_value
+        button.custom_minimum_size.y = 74
+        button.add_theme_font_size_override("font_size", 18)
+        button.pressed.connect(_open_specific_build.bind(run_id))
+        build_info.add_child(button)
+        shown += 1
+        if shown >= 5:
+            break
+    status.text = "GitHub-Builds abgerufen: " + str(shown) + " Einträge."
+    if shown == 0:
+        var hint := Label.new()
+        hint.text = "Noch keine Build-Läufe vorhanden."
+        build_info.add_child(hint)
+
+func _prepare_build() -> void:
+    if selected_tab != "Builds" or build_in_progress:
+        status.text = "Derzeit kann kein weiterer Build gestartet werden."
+        return
+    var token := build_token_input.text.strip_edges()
+    if token.is_empty() or token.contains("\n") or token.contains("\r"):
+        status.text = "Bitte einen gültigen GitHub-Token mit Actions-Schreibrecht eingeben."
+        return
+    build_ready = true
+    build_confirm_button.disabled = false
+    build_confirmation_label.text = "Neuer Cloud-Build:\nRepository: xynewageyx/GameForge-AI\nWorkflow: android.yml\nBranch: main\nKeine APK wird auf dem Handy erzeugt. Erst die Bestätigung startet GitHub Actions."
+    status.text = "Build-Auftrag vorbereitet. Bestätigung erforderlich."
+
+func _trigger_build() -> void:
+    if not build_ready or build_in_progress or selected_tab != "Builds":
+        return
+    var token := build_token_input.text.strip_edges()
+    if token.is_empty() or token.contains("\n") or token.contains("\r"):
+        _cancel_build_confirmation()
+        status.text = "GitHub-Token fehlt."
+        return
+    var url := "https://api.github.com/repos/xynewageyx/GameForge-AI/actions/workflows/android.yml/dispatches"
+    var headers := ["Accept: application/vnd.github+json", "Content-Type: application/json", "User-Agent: GameForgeAI", "Authorization: Bearer " + token]
+    build_ready = false
+    build_confirm_button.disabled = true
+    var body := JSON.stringify({"ref": "main"})
+    var err := build_trigger_request.request(url, headers, HTTPClient.METHOD_POST, body)
+    build_token_input.clear()
+    if err != OK:
+        status.text = "Build-Anfrage konnte nicht gesendet werden: " + str(err)
+        build_confirmation_label.text = "Nicht gestartet. Erneut vorbereiten."
+        return
+    build_in_progress = true
+    status.text = "GitHub-Build wird angefordert..."
+    build_confirmation_label.text = "Anfrage gesendet. Bestätigung von GitHub wird geprüft."
+
+func _on_build_trigger_response(result: int, code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
+    if not build_in_progress:
+        return
+    build_in_progress = false
+    if result != HTTPRequest.RESULT_SUCCESS:
+        status.text = "Netzwerkfehler: " + str(result) + ". Bitte GitHub Actions im Browser prüfen."
+    elif code == 204:
+        status.text = "Build angefordert! Fortschritt unter GitHub Actions prüfen."
+    elif code == 401 or code == 403:
+        status.text = "Build abgelehnt (HTTP " + str(code) + "): Actions-Schreibrecht oder Token prüfen."
+    elif code == 404:
+        status.text = "Workflow nicht gefunden oder kein Zugriff (HTTP 404)."
+    elif code == 422:
+        status.text = "Build-Aktion ungültig (HTTP 422): Branch/Workflow prüfen."
+    else:
+        status.text = "GitHub hat den Build nicht bestätigt (HTTP " + str(code) + ")."
+    if selected_tab == "Builds" and build_confirmation_label != null and is_instance_valid(build_confirmation_label):
+        build_confirmation_label.text = "Anfrage abgeschlossen. Build-Status mit der Schaltfläche oben aktualisieren."
+
 func _render_tab() -> void:
     for child in content.get_children():
         child.queue_free()
