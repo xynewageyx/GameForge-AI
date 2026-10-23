@@ -1,5 +1,7 @@
 extends SceneTree
 
+var answers: Array = []
+
 func _initialize() -> void:
     call_deferred("_run_tests")
 
@@ -16,10 +18,7 @@ func _run_tests() -> void:
     if service.send("gemini", "invalid model!", "not-a-real-key", "GameForge AI", "Test", []) != ERR_INVALID_PARAMETER:
         _fail("Invalid Gemini model name must be rejected")
         return
-    var answers: Array = []
-    service.answered.connect(func(ok: bool, reply: String) -> void:
-        answers.append({"ok": ok, "reply": reply})
-    )
+    service.connect("answered", Callable(self, "_record_answer"))
     service.request_running = true
     service.current_provider = "gemini"
     var google_response := JSON.stringify({
@@ -49,6 +48,9 @@ func _run_tests() -> void:
     print("AI chat offline smoke tests passed: Gemini + OmniRoute + error handling")
     service.queue_free()
     quit(0)
+
+func _record_answer(ok: bool, reply: String) -> void:
+    answers.append({"ok": ok, "reply": reply})
 
 func _fail(message: String) -> void:
     push_error(message)
