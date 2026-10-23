@@ -33,7 +33,7 @@ func send(provider: String, model: String, api_key: String, project_name: String
         return ERR_INVALID_PARAMETER
     var system_prompt := "Du bist GameForge AI, ein deutschsprachiger Entwicklungsassistent für Godot 4.7.2 und Android. Aktives Projekt: " + project_name + ". Gib nachvollziehbare GDScript-Vorschläge und weise auf ungetesteten Code hin. Du hast hier keinen automatischen Zugriff auf Repository-Dateien, Projektzustände oder Gerätefunktionen. Antworte konkret und führe keine Änderungen oder Commits eigenständig aus."
     var url := ""
-    var headers: Array[String] = ["Content-Type: application/json"]
+    var headers: PackedStringArray = PackedStringArray(["Content-Type: application/json"])
     var payload := ""
     if provider == "gemini":
         if api_key.is_empty():
