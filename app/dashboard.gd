@@ -23,6 +23,7 @@ var github_list: VBoxContainer
 var github_request_mode: String = "file"
 var current_file_label: Label
 var loaded_source: String = "local"
+var loaded_local_path: String = "main.gd"
 var github_loaded_path: String = ""
 var github_loaded_sha: String = ""
 var github_loaded_repo: String = ""
@@ -291,6 +292,7 @@ func _load_local_file() -> void:
     if editor == null or file_picker == null:
         return
     var filename := file_names[file_picker.selected]
+    loaded_local_path = filename
     loaded_source = "local"
     github_loaded_path = ""
     github_loaded_sha = ""
@@ -329,6 +331,7 @@ func _save_local_file() -> void:
     file.store_string(editor.text)
     file.flush()
     _clear_current_recovery()
+    loaded_local_path = filename
     _mark_editor_baseline()
     status.text = "Lokal gespeichert: " + filename
 
@@ -994,6 +997,7 @@ func _save_ai_draft() -> void:
         file_names.append(relative_path)
         file_picker.add_item(relative_path)
     file_picker.select(file_names.find(relative_path))
+    loaded_local_path = relative_path
     loaded_source = "local"
     _mark_editor_baseline()
     restored_extension = "gd"
@@ -1081,6 +1085,7 @@ func _restore_analysis_source() -> bool:
             analysis_source_snapshot.clear()
             return false
         file_picker.select(index)
+        loaded_local_path = filename
     elif source != "github":
         return false
     editor.text = str(analysis_source_snapshot.get("code", ""))
@@ -1155,9 +1160,8 @@ func _current_recovery_identity() -> Dictionary:
         return {"source": "github", "path": github_loaded_path, "repo": github_loaded_repo}
     if loaded_source == "ai_draft":
         return {"source": "ai_draft", "path": "ungespeicherter_entwurf." + restored_extension, "repo": ""}
-    if loaded_source == "local" and file_picker != null and is_instance_valid(file_picker):
-        if file_picker.selected >= 0 and file_picker.selected < file_names.size():
-            return {"source": "local", "path": file_names[file_picker.selected], "repo": ""}
+    if loaded_source == "local" and not loaded_local_path.is_empty():
+        return {"source": "local", "path": loaded_local_path, "repo": ""}
     return {}
 
 func _autosave_now() -> void:
