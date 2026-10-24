@@ -1,6 +1,7 @@
 extends SceneTree
 
 const AI_CODE_TOOLS = preload("res://app/ai_code_tools.gd")
+const EDITOR_RECOVERY = preload("res://app/editor_recovery.gd")
 
 var answers: Array = []
 
@@ -87,6 +88,35 @@ func _run_tests() -> void:
     if answers.size() != 3 or answers[2].get("ok", true):
         _fail("HTTP errors must not be reported as success")
         return
+    # Speicherservice: eine separate Wiederherstellung je Projekt und Quelldatei.
+    var recovery_project := "GameForge Autosave CI Test"
+    var recovery_id: String = EDITOR_RECOVERY.snapshot_id(recovery_project, "local", "scripts/hero.gd", "")
+    if EDITOR_RECOVERY.save_snapshot(recovery_project, "local", "scripts/hero.gd", "", "extends Node\n") != OK:
+        _fail("Recovery snapshot cannot be created")
+        return
+    var recovered: Dictionary = EDITOR_RECOVERY.read_snapshot(recovery_project, recovery_id)
+    if str(recovered.get("content", "")) != "extends Node\n":
+        _fail("Saved editor snapshot cannot be restored")
+        return
+    if EDITOR_RECOVERY.save_snapshot(recovery_project, "local", "scripts/hero.gd", "", "extends Node2D\n") != OK:
+        _fail("Atomic recovery snapshot update failed")
+        return
+    recovered = EDITOR_RECOVERY.read_snapshot(recovery_project, recovery_id)
+    if str(recovered.get("content", "")) != "extends Node2D\n":
+        _fail("Latest editor snapshot not retained")
+        return
+    if EDITOR_RECOVERY.list_snapshots(recovery_project).size() != 1:
+        _fail("Recovery snapshot listing failed")
+        return
+    if not EDITOR_RECOVERY.read_snapshot(recovery_project, "../invalid").is_empty():
+        _fail("Invalid recovery identifier was accepted")
+        return
+    if EDITOR_RECOVERY.delete_snapshot(recovery_project, recovery_id) != OK:
+        _fail("Recovery snapshot could not be removed after explicit save")
+        return
+    if not EDITOR_RECOVERY.read_snapshot(recovery_project, recovery_id).is_empty():
+        _fail("Deleted snapshot still readable")
+        return
     # Integration: Editor lädt lokale Datei, bereitet KI-Analyse vor – OHNE HTTP-Request.
     var dashboard_script: Script = load("res://app/dashboard.gd")
     if dashboard_script == null:
@@ -136,8 +166,32 @@ func _run_tests() -> void:
         return
     dashboard._scroll_text_page(dashboard.ai_chat_log, 1)
     dashboard._scroll_text_page(dashboard.ai_chat_log, -1)
+    # Editor-Integration: Änderungen automatisch sichern, als KOPIE wiederherstellen.
+    dashboard._select_tab("Code")
+    dashboard.editor.text = example_code + "# unsaved mobile edit\n"
+    dashboard._autosave_now()
+    var autosave_id: String = EDITOR_RECOVERY.snapshot_id("GameForge AI", "local", "main.gd", "")
+    var saved_draft: Dictionary = EDITOR_RECOVERY.read_snapshot("GameForge AI", autosave_id)
+    if str(saved_draft.get("content", "")) != dashboard.editor.text:
+        _fail("Editor modifications were not auto-saved")
+        return
+    dashboard._select_tab("Projekte")
+    dashboard._select_tab("Code")
+    dashboard._restore_saved_recovery(autosave_id)
+    if dashboard.loaded_source != "ai_draft" or not dashboard.editor.text.contains("unsaved mobile edit"):
+        _fail("Autosaved editor changes could not be restored as a draft")
+        return
+    dashboard._save_ai_draft()
+    if dashboard.loaded_source != "local" or not dashboard.loaded_local_path.begins_with("ai_drafts/"):
+        _fail("Recovered draft was not saved as a distinct local file")
+        return
+    var original_file := FileAccess.open(dashboard._workspace_path("main.gd"), FileAccess.READ)
+    if original_file == null or original_file.get_as_text() != example_code:
+        _fail("Original file changed during autosave recovery")
+        return
+    EDITOR_RECOVERY.delete_snapshot("GameForge AI", autosave_id)
     dashboard.queue_free()
-    print("AI chat offline smoke tests passed: Gemini + OmniRoute + touch scrolling + code review staging + error handling")
+    print("AI chat offline smoke tests passed: Gemini + OmniRoute + touch scrolling + autosave recovery + code review staging + error handling")
     service.queue_free()
     quit(0)
 
