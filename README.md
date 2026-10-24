@@ -11,6 +11,23 @@ GameForge AI ist ein Godot-4.7.2-Projekt für Android. Der Quellcode wird über 
 
 **Achtung:** Die CI erzeugt aktuell pro Build einen neuen Debug-Keystore. Android kann deshalb Updates mit abweichender Signatur ablehnen. Eine Deinstallation der vorherigen Version kann erforderlich sein und löscht lokale App-Daten. Vorher lokale Dateien sichern. Dauerhafte Signierung ist noch nicht eingerichtet.
 
+## Automatische Sicherung im Code-Editor
+
+Der Code-Editor sichert geänderte Texte **automatisch**, ohne dass die Schaltfläche „Lokal speichern“ gedrückt werden muss.
+
+- **Nach etwa 3 Sekunden ohne neue Eingabe** wird der aktuelle Editorinhalt lokal gesichert.
+- Beim Wechsel zwischen Reitern oder Projekten und beim Pausieren/Schließen der App wird nach Möglichkeit sofort gesichert.
+- Für verschiedene lokale oder GitHub-Dateien werden getrennte Wiederherstellungen abgelegt: `user://<Projekt>/recovery/<Datei-ID>.json`.
+- Die Wiederherstellungen liegen **nur im privaten App-Speicher**. Es gibt keine automatische GitHub-Übertragung.
+- Im Reiter **Code** unter **Auto-Sicherungen anzeigen** lassen sich Sicherungen öffnen. Sie werden absichtlich **als eigenständige Entwürfe** wiederhergestellt, damit die ursprünglich geladene Datei nicht unbemerkt überschrieben wird.
+- Mit **KI-Entwurf als neue Datei speichern** lässt sich ein wiederhergestellter Entwurf unter einem neuen Dateinamen im Projektverzeichnis `ai_drafts/` speichern. Der Button funktioniert auch für wiederhergestellte Textentwürfe.
+- Bei einem absichtlichen lokalen Speichern wird die entsprechende automatische Sicherung gelöscht.
+- Auto-Sicherungen sind auf 1 MB pro Datei begrenzt. Bei einem Fehler zeigt der Editor eine Warnung; **Editorinhalt als Backup kopieren** dient als zusätzliche Notlösung.
+
+**Wichtig:** Die Funktion schützt gegen versehentlichen Tabwechsel oder App-Neustart, **nicht** gegen das Löschen von App-Daten oder eine Deinstallation. Da unsere Android-Debug-Builds derzeit wechselnde Signaturen benutzen und eventuell deinstalliert werden müssen, sind wichtige Entwürfe vor einem APK-Update weiterhin außerhalb der App zu sichern. Sie ersetzt auch nicht das regelmäßige Speichern kritischer GitHub-Projektdateien.
+
+Diese Auto-Sicherung gehört zum **GameForge-AI-Code-Editor**. Sie ist nicht mit der getrennten Spielstand-Autosave-Funktion von Titan Legends gleichzusetzen.
+
 ## Touch-Bedienung: Scrollen auf Android
 
 Die Oberfläche hat größere Scrollbalken (mindestens 46 Godot-UI-Pixel) und eine empfindliche Touch-Wischbewegung im Hauptbereich. Rechts muss kein schmaler Griff mehr exakt getroffen werden.
