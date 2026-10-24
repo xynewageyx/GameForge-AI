@@ -1121,6 +1121,132 @@ func _discard_pending_analysis() -> void:
         _render_tab()
     status.text = "Analyseauftrag verworfen. Keine Datei übertragen."
 
+func _notification(what: int) -> void:
+    if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST:
+        if autosave_timer != null:
+            _autosave_now()
+
+func _on_editor_text_changed() -> void:
+    if selected_tab != "Code" or autosave_timer == null:
+        return
+    if editor == null or not is_instance_valid(editor):
+        return
+    if editor.text == editor_baseline:
+        autosave_timer.stop()
+        return
+    autosave_timer.start(3.0)
+    if autosave_feedback != null and is_instance_valid(autosave_feedback):
+        autosave_feedback.text = "Auto-Sicherung: Änderungen erkannt. Lokale Sicherung folgt..."
+
+func _mark_editor_baseline() -> void:
+    if autosave_timer != null:
+        autosave_timer.stop()
+    if editor != null and is_instance_valid(editor):
+        editor_baseline = editor.text
+
+func _current_recovery_identity() -> Dictionary:
+    if editor == null or not is_instance_valid(editor):
+        return {}
+    if selected_tab != "Code":
+        return {}
+    if loaded_source == "github":
+        if github_loaded_path.is_empty() or github_loaded_repo.is_empty():
+            return {}
+        return {"source": "github", "path": github_loaded_path, "repo": github_loaded_repo}
+    if loaded_source == "ai_draft":
+        return {"source": "ai_draft", "path": "ungespeicherter_entwurf." + restored_extension, "repo": ""}
+    if loaded_source == "local" and file_picker != null and is_instance_valid(file_picker):
+        if file_picker.selected >= 0 and file_picker.selected < file_names.size():
+            return {"source": "local", "path": file_names[file_picker.selected], "repo": ""}
+    return {}
+
+func _autosave_now() -> void:
+    if autosave_timer != null:
+        autosave_timer.stop()
+    if selected_tab != "Code" or editor == null or not is_instance_valid(editor):
+        return
+    if editor.text == editor_baseline:
+        return
+    var identity := _current_recovery_identity()
+    if identity.is_empty():
+        return
+    var result: Error = EDITOR_RECOVERY.save_snapshot(
+        active_project,
+        str(identity["source"]),
+        str(identity["path"]),
+        str(identity["repo"]),
+        editor.text
+    )
+    if autosave_feedback != null and is_instance_valid(autosave_feedback):
+        if result == OK:
+            autosave_feedback.text = "Auto-Sicherung erfolgt: " + Time.get_time_string_from_system() + " (nur auf diesem Gerät)"
+        else:
+            autosave_feedback.text = "Auto-Sicherung fehlgeschlagen: " + str(result) + ". Editorinhalt als Backup kopieren!"
+    if result == OK:
+        editor_baseline = editor.text
+
+func _clear_current_recovery() -> void:
+    var identity := _current_recovery_identity()
+    if identity.is_empty():
+        return
+    var id: String = EDITOR_RECOVERY.snapshot_id(
+        active_project,
+        str(identity["source"]),
+        str(identity["path"]),
+        str(identity["repo"])
+    )
+    EDITOR_RECOVERY.delete_snapshot(active_project, id)
+
+func _refresh_recovery_list() -> void:
+    if selected_tab != "Code" or recovery_list == null or not is_instance_valid(recovery_list):
+        return
+    for child in recovery_list.get_children():
+        child.queue_free()
+    var snapshots: Array = EDITOR_RECOVERY.list_snapshots(active_project)
+    if snapshots.is_empty():
+        var empty := Label.new()
+        empty.text = "Keine automatischen Wiederherstellungen vorhanden."
+        empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        recovery_list.add_child(empty)
+        return
+    var count := 0
+    for snapshot in snapshots:
+        if not snapshot is Dictionary:
+            continue
+        var label := str(snapshot.get("source", "")) + ": " + str(snapshot.get("path", ""))
+        var saved_at := str(snapshot.get("saved_at", ""))
+        var button := Button.new()
+        button.text = "Entwurf wiederherstellen: " + label + "\n" + saved_at
+        button.custom_minimum_size.y = 82
+        button.add_theme_font_size_override("font_size", 18)
+        button.pressed.connect(_restore_saved_recovery.bind(str(snapshot.get("id", ""))))
+        recovery_list.add_child(button)
+        count += 1
+        if count >= 20:
+            break
+
+func _restore_saved_recovery(id: String) -> void:
+    if selected_tab != "Code" or editor == null or not is_instance_valid(editor):
+        return
+    _autosave_now()
+    var snapshot: Dictionary = EDITOR_RECOVERY.read_snapshot(active_project, id)
+    if snapshot.is_empty():
+        status.text = "Diese lokale Sicherung kann nicht gelesen werden."
+        return
+    var contents := str(snapshot.get("content", ""))
+    if contents.to_utf8_buffer().size() > 1048576:
+        status.text = "Auto-Sicherung ist zu groß."
+        return
+    var original_name := str(snapshot.get("path", ""))
+    restored_extension = "txt" if original_name.to_lower().ends_with(".txt") else "gd"
+    ai_draft_code = contents
+    ai_draft_project = active_project
+    pending_analysis.clear()
+    analysis_source_snapshot.clear()
+    _restore_ai_draft()
+    _set_current_file("Wiederhergestellter Entwurf aus " + original_name + " (Original unverändert)")
+    status.text = "Auto-Sicherung als eigenständiger Entwurf geöffnet. Zum Behalten als NEUE Datei speichern."
+
 func _render_tab() -> void:
     call_deferred("_scroll_to_top")
     for child in content.get_children():
