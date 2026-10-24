@@ -1,6 +1,7 @@
 extends Control
 
 const AI_CODE_TOOLS = preload("res://app/ai_code_tools.gd")
+const EDITOR_RECOVERY = preload("res://app/editor_recovery.gd")
 
 var selected_tab: String = "Projekte"
 var tabs: Array[String] = ["Projekte", "KI-Chat", "Code", "Builds", "Einstellungen"]
@@ -10,6 +11,11 @@ var status: Label
 var navigation: HFlowContainer
 var active_project: String = "GameForge AI"
 var editor: TextEdit
+var editor_baseline: String = ""
+var autosave_timer: Timer
+var autosave_feedback: Label
+var recovery_list: VBoxContainer
+var restored_extension: String = "gd"
 var file_picker: OptionButton
 var github_path_input: LineEdit
 var github_request: HTTPRequest
@@ -66,6 +72,11 @@ var file_names: Array[String] = ["main.gd", "notes.txt"]
 func _ready() -> void:
     set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     _ensure_workspace()
+    autosave_timer = Timer.new()
+    autosave_timer.one_shot = true
+    autosave_timer.wait_time = 3.0
+    add_child(autosave_timer)
+    autosave_timer.timeout.connect(_autosave_now)
     github_request = HTTPRequest.new()
     add_child(github_request)
     github_request.request_completed.connect(_github_response)
@@ -210,6 +221,7 @@ func _scroll_text_page(area: TextEdit, direction: int) -> void:
 
 func _select_tab(tab: String) -> void:
     if selected_tab == "Code":
+        _autosave_now()
         _remember_analysis_editor()
         _remember_ai_draft()
     if selected_tab == "KI-Chat" and tab != selected_tab:
@@ -251,6 +263,7 @@ func _add_button(caption: String, callback: Callable) -> void:
     content.add_child(button)
 
 func _select_project(name: String) -> void:
+    _autosave_now()
     _remember_ai_draft()
     if name != active_project:
         pending_analysis.clear()
@@ -268,6 +281,7 @@ func _select_project(name: String) -> void:
     _render_tab()
 
 func _load_selected_file() -> void:
+    _autosave_now()
     _remember_ai_draft()
     pending_analysis.clear()
     analysis_source_snapshot.clear()
@@ -287,6 +301,7 @@ func _load_local_file() -> void:
     var path := _workspace_path(filename)
     if not FileAccess.file_exists(path):
         editor.text = ""
+        _mark_editor_baseline()
         status.text = "Neue lokale Datei: " + filename
         return
     var file := FileAccess.open(path, FileAccess.READ)
@@ -294,6 +309,7 @@ func _load_local_file() -> void:
         status.text = "Lesefehler: " + filename
         return
     editor.text = file.get_as_text()
+    _mark_editor_baseline()
     status.text = "Geladen: " + filename
 
 func _save_local_file() -> void:
@@ -312,6 +328,8 @@ func _save_local_file() -> void:
         return
     file.store_string(editor.text)
     file.flush()
+    _clear_current_recovery()
+    _mark_editor_baseline()
     status.text = "Lokal gespeichert: " + filename
 
 
@@ -371,6 +389,7 @@ func _github_repo() -> String:
     return ""
 
 func _github_load() -> void:
+    _autosave_now()
     _remember_ai_draft()
     var repo := _github_repo()
     if repo.is_empty():
@@ -459,7 +478,9 @@ func _github_response(result: int, code: int, _headers: PackedStringArray, body:
     if file_text.contains("\u0000"):
         status.text = "Binärdatei: Bitte nur Textdateien öffnen."
         return
+    _autosave_now()
     editor.text = file_text
+    _mark_editor_baseline()
     pending_analysis.clear()
     analysis_source_snapshot.clear()
     loaded_source = "github"
@@ -908,6 +929,7 @@ func _restore_ai_draft() -> void:
     _cancel_pending_upload()
     loaded_source = "ai_draft"
     editor.text = ai_draft_code
+    _mark_editor_baseline()
     github_loaded_path = ""
     github_loaded_sha = ""
     github_loaded_repo = ""
@@ -929,7 +951,7 @@ func _refresh_local_file_names() -> void:
     var entries := drafts_dir.get_files()
     entries.sort()
     for entry in entries:
-        if entry.ends_with(".gd") and file_names.size() < 300:
+        if (entry.ends_with(".gd") or entry.ends_with(".txt")) and file_names.size() < 300:
             file_names.append("ai_drafts/" + entry)
 
 func _save_ai_draft() -> void:
@@ -950,10 +972,11 @@ func _save_ai_draft() -> void:
         return
     var stamp := Time.get_datetime_string_from_system().replace("-", "").replace(":", "").replace("T", "_")
     var stem := "ki_entwurf_" + stamp
-    var name := stem + ".gd"
+    var draft_suffix := ".txt" if restored_extension == "txt" else ".gd"
+    var name := stem + draft_suffix
     var counter := 1
     while FileAccess.file_exists(dir_path + "/" + name) and counter <= 999:
-        name = stem + "_" + str(counter) + ".gd"
+        name = stem + "_" + str(counter) + draft_suffix
         counter += 1
     if FileAccess.file_exists(dir_path + "/" + name):
         status.text = "Kein freier Dateiname für neuen KI-Entwurf."
@@ -965,12 +988,15 @@ func _save_ai_draft() -> void:
     output.store_string(body)
     output.flush()
     output.close()
+    _clear_current_recovery()
     var relative_path := "ai_drafts/" + name
     if not file_names.has(relative_path):
         file_names.append(relative_path)
         file_picker.add_item(relative_path)
     file_picker.select(file_names.find(relative_path))
     loaded_source = "local"
+    _mark_editor_baseline()
+    restored_extension = "gd"
     ai_draft_code = ""
     ai_draft_project = ""
     _set_current_file("Lokal: " + relative_path)
@@ -1058,6 +1084,7 @@ func _restore_analysis_source() -> bool:
     elif source != "github":
         return false
     editor.text = str(analysis_source_snapshot.get("code", ""))
+    _mark_editor_baseline()
     loaded_source = source
     github_loaded_path = str(analysis_source_snapshot.get("github_path", ""))
     github_loaded_sha = str(analysis_source_snapshot.get("github_sha", ""))
@@ -1170,6 +1197,7 @@ func _render_tab() -> void:
             current_file_label.add_theme_font_size_override("font_size", 19)
             content.add_child(current_file_label)
             editor = TextEdit.new()
+            editor.text_changed.connect(_on_editor_text_changed)
             editor.custom_minimum_size.y = 430
             editor.size_flags_horizontal = Control.SIZE_EXPAND_FILL
             editor.add_theme_font_size_override("font_size", 20)
@@ -1181,6 +1209,15 @@ func _render_tab() -> void:
             _add_button("KI-Entwurf als neue Datei speichern", _save_ai_draft)
             _add_button("Ungespeicherten KI-Entwurf wieder öffnen", _restore_ai_draft)
             _add_button("Editorinhalt als Backup kopieren", _copy_current_editor_code)
+            autosave_feedback = Label.new()
+            autosave_feedback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+            autosave_feedback.add_theme_font_size_override("font_size", 17)
+            autosave_feedback.text = "Auto-Sicherung: Änderungen werden lokal nach etwa 3 Sekunden gesichert."
+            content.add_child(autosave_feedback)
+            _add_button("Auto-Sicherungen anzeigen", _refresh_recovery_list)
+            recovery_list = VBoxContainer.new()
+            recovery_list.add_theme_constant_override("separation", 10)
+            content.add_child(recovery_list)
             _load_local_file()
             if not _restore_analysis_source():
                 _restore_ai_draft_on_tab_open()
