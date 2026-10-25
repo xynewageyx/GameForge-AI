@@ -123,6 +123,9 @@ func _run_tests() -> void:
     if diagnostic_answers.size() != 3 or diagnostic_answers[2].get("ok", true):
         _fail("Diagnostic must reject unauthorised requests")
         return
+    if not str(diagnostic_answers[2].get("details", "")).contains("Endpoint-Key"):
+        _fail("OmniRoute 401 must explain dashboard endpoint authentication")
+        return
     service.diagnostic_running = true
     service.diagnostic_provider = "omniroute"
     service._on_diagnostic_completed(HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray())
@@ -207,6 +210,10 @@ func _run_tests() -> void:
         return
     if dashboard.ai_diagnostic_button.disabled:
         _fail("Connection test must be available when chat is idle")
+        return
+    dashboard._on_ai_diagnosed(false, "OmniRoute: HTTP 401 – Endpoint-Key erforderlich")
+    if not dashboard.status.text.contains("erreichbar"):
+        _fail("Dashboard must distinguish OmniRoute auth from network failure")
         return
     if dashboard.ai_chat_log.get_v_scroll_bar().custom_minimum_size.x < 44.0:
         _fail("Chat history scrollbar is too narrow for touch")
