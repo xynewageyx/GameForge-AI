@@ -173,6 +173,29 @@ func _run_tests() -> void:
     if chat_test_answers.size() != 4 or chat_test_answers[3].get("ok", true):
         _fail("Chat test must not treat rate-limit as a success")
         return
+    # 503-Diagnose: Nur bekannte Ursachen klassifizieren, niemals Rohfehler veröffentlichen.
+    var no_auth_error := JSON.stringify({"error": {"message": "auth_unavailable: no auth available (provider secret DO_NOT_SHOW)"}})
+    if not service._omniroute_503_hint(no_auth_error.to_utf8_buffer()).contains("Provider-Zugangsdaten"):
+        _fail("OmniRoute unavailable-auth cause not recognized")
+        return
+    service.chat_test_running = true
+    service.chat_test_provider = "omniroute"
+    service._on_chat_test_completed(HTTPRequest.RESULT_SUCCESS, 503, PackedStringArray(), no_auth_error.to_utf8_buffer())
+    if chat_test_answers.size() != 5 or chat_test_answers[4].get("ok", true):
+        _fail("503 from OmniRoute must fail")
+        return
+    var displayed_503 := str(chat_test_answers[4].get("details", ""))
+    if not displayed_503.contains("Provider-Zugangsdaten") or displayed_503.contains("DO_NOT_SHOW"):
+        _fail("503 must be actionable and not disclose provider error body")
+        return
+    var quota_error := JSON.stringify({"error": {"message": "usage_limit_reached: quota exceeded"}})
+    if not service._omniroute_503_hint(quota_error.to_utf8_buffer()).contains("Kontingent"):
+        _fail("OmniRoute quota cause not recognized")
+        return
+    var route_error := JSON.stringify({"error": {"message": "no eligible candidates"}})
+    if not service._omniroute_503_hint(route_error.to_utf8_buffer()).contains("Modellroute"):
+        _fail("OmniRoute route cause not recognized")
+        return
     # Speicherservice: eine separate Wiederherstellung je Projekt und Quelldatei.
     var recovery_project := "GameForge Autosave CI Test"
     var recovery_id: String = EDITOR_RECOVERY.snapshot_id(recovery_project, "local", "scripts/hero.gd", "")
@@ -248,6 +271,13 @@ func _run_tests() -> void:
     dashboard._select_tab("KI-Chat")
     if dashboard.ai_chat_test_button == null or dashboard.ai_chat_test_label == null:
         _fail("Missing separate in-app chat test controls")
+        return
+    dashboard._choose_omniroute_auto_model()
+    if dashboard.ai_model_input.text != "auto":
+        _fail("Cannot select OmniRoute default auto routing without a request")
+        return
+    if dashboard.ai_service.call("is_testing_chat") or dashboard.ai_service.call("is_busy"):
+        _fail("Switching OmniRoute model must not start an inference request")
         return
     if dashboard.ai_diagnostic_button == null or dashboard.ai_diagnostic_label == null:
         _fail("Missing in-app AI connection test controls")
