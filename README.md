@@ -122,6 +122,16 @@ Im Reiter **KI-Chat** gibt es die Schaltfläche **„OmniRoute / Gemini Verbindu
 
 Nach erfolgreicher Diagnose kann eine **kurze, unkritische Testnachricht** gesendet werden, beispielsweise „Antworte mit OK“. Bei fehlgeschlagenem Test keine Geheimnisse in Screenshots oder in diesen Chat kopieren.
 
+## OmniRoute Chat HTTP 503: kein einsatzbereiter Anbieter
+
+Wenn GameForge AI beim **echten KI-Chat** `HTTP 503` meldet, ist der lokale OmniRoute-Server zwar erreichbar, aber das angeforderte Modell/der Upstream momentan nicht verfügbar. Häufige Ursachen: kein aktives Provider-Konto für die automatische Route, abgelaufene Upstream-Anmeldung, Provider-Circuit-Breaker oder ein ausgeschöpftes Kontingent. Ein `503` allein beweist **nicht**, welche der Ursachen zutrifft.
+
+**Prüfen:** `http://127.0.0.1:20128/dashboard/providers` öffnen und sicherstellen, dass mindestens ein mit OmniRoute verbundener Anbieter aktiv ist. Unter **Monitoring/Logs** die betroffene Anfrage und deren upstream Fehlergrund prüfen. Wenn ein Anbieter verfügbar ist, im Feld **Modell** testweise `auto` statt `auto/coding` verwenden. `auto` versucht das allgemeine Routing; `auto/coding` bevorzugt Coding-Modelle. Auch `auto` benötigt einen funktionierenden Upstream und gewährleistet weder kostenlose noch erfolgreiche Antworten.
+
+In neueren GameForge-AI-Versionen existieren im **KI-Chat** die Schaltflächen **„OmniRoute-Modell auf auto umstellen (kein Teststart)“** und **„OmniRoute-Provider-Verbindungen öffnen“**. Der Modellwechsel sendet **keine** automatische Anfrage. Erst die separate Schaltfläche **„Kurze KI-Testantwort anfordern“** sendet eine kleine Inferenzanfrage, die Provider-Kontingent verbrauchen kann.
+
+Bei `HTTP 503` versucht die App bekannte Fehlerklassen (z. B. `auth_unavailable`, `usage_limit_reached`, `no eligible candidates` oder Circuit Breaker) aus der JSON-Antwort zu unterscheiden und eine lokale Hilfestellung anzuzeigen. **Die ursprüngliche Serverfehlermeldung wird nicht ungefiltert eingeblendet**, weil sie sensible Anbieterinformationen enthalten kann. Die beste Detaildiagnose bleibt die lokale Monitoring-Ansicht von OmniRoute.
+
 ## Separater Chat-Endpunkt-Test bei OmniRoute HTTP 401
 
 `GET /v1/models` und `POST /v1/chat/completions` können in OmniRoute **unterschiedliche Authentifizierungsregeln** haben. Ein `HTTP 401` im Modelllisten-Test beweist **nicht**, dass der eigentliche Chat ebenfalls gesperrt ist.
