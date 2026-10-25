@@ -4,6 +4,7 @@ extends Node
 
 signal answered(success: bool, reply: String)
 signal diagnosed(success: bool, details: String)
+signal chat_tested(success: bool, details: String)
 
 var http_request: HTTPRequest
 var request_running: bool = false
@@ -11,6 +12,9 @@ var current_provider: String = ""
 var diagnostic_request: HTTPRequest
 var diagnostic_running: bool = false
 var diagnostic_provider: String = ""
+var chat_test_request: HTTPRequest
+var chat_test_running: bool = false
+var chat_test_provider: String = ""
 
 func _ready() -> void:
     http_request = HTTPRequest.new()
@@ -25,6 +29,12 @@ func _ready() -> void:
     diagnostic_request.max_redirects = 0
     add_child(diagnostic_request)
     diagnostic_request.request_completed.connect(_on_diagnostic_completed)
+    chat_test_request = HTTPRequest.new()
+    chat_test_request.timeout = 25.0
+    chat_test_request.body_size_limit = 131072
+    chat_test_request.max_redirects = 0
+    add_child(chat_test_request)
+    chat_test_request.request_completed.connect(_on_chat_test_completed)
 
 func is_busy() -> bool:
     return request_running
@@ -44,7 +54,7 @@ func cancel_diagnosis() -> void:
         diagnostic_running = false
 
 func diagnose(provider: String, api_key: String) -> int:
-    if diagnostic_running or request_running:
+    if diagnostic_running or request_running or chat_test_running:
         return ERR_BUSY
     var url := ""
     var headers := PackedStringArray(["Accept: application/json"])
@@ -119,8 +129,100 @@ func _on_diagnostic_completed(result: int, code: int, _headers: PackedStringArra
     message += " (Kein Test einer Chat-Antwort.)"
     diagnosed.emit(true, message)
 
+## Kurze echte Modellanfrage mit expliziter Nutzeraktion. Keine Projektdateien oder Chat-Historie.
+## Sie kann bei dem verbundenen Anbieter Tokens/Kontingent verbrauchen.
+func is_testing_chat() -> bool:
+    return chat_test_running
+
+func cancel_chat_test() -> void:
+    if chat_test_running:
+        chat_test_request.cancel_request()
+        chat_test_running = false
+
+func test_chat(provider: String, model: String, api_key: String) -> int:
+    if diagnostic_running or request_running or chat_test_running:
+        return ERR_BUSY
+    if model.is_empty() or model.length() > 120 or model.contains("\n") or model.contains("\r"):
+        return ERR_INVALID_PARAMETER
+    var url := ""
+    var headers := PackedStringArray(["Content-Type: application/json", "Accept: application/json"])
+    var payload := ""
+    if provider == "omniroute":
+        url = "http://127.0.0.1:20128/v1/chat/completions"
+        if not api_key.is_empty():
+            headers.append("Authorization: Bearer " + api_key)
+        payload = JSON.stringify({
+            "model": model,
+            "messages": [{"role": "user", "content": "Antworte ausschließlich mit OK."}],
+            "max_tokens": 20,
+            "stream": false
+        })
+    elif provider == "gemini":
+        if api_key.is_empty():
+            return ERR_UNAUTHORIZED
+        for ch in model:
+            if not (ch in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"):
+                return ERR_INVALID_PARAMETER
+        url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent"
+        headers.append("x-goog-api-key: " + api_key)
+        payload = JSON.stringify({
+            "contents": [{"role": "user", "parts": [{"text": "Antworte ausschließlich mit OK."}]}],
+            "generationConfig": {"maxOutputTokens": 20}
+        })
+    else:
+        return ERR_INVALID_PARAMETER
+    var err := chat_test_request.request(url, headers, HTTPClient.METHOD_POST, payload)
+    if err == OK:
+        chat_test_running = true
+        chat_test_provider = provider
+    return err
+
+func _on_chat_test_completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+    if not chat_test_running:
+        return
+    chat_test_running = false
+    var service_name := "OmniRoute" if chat_test_provider == "omniroute" else "Gemini"
+    if result != HTTPRequest.RESULT_SUCCESS:
+        chat_tested.emit(false, service_name + ": Netzwerkfehler " + str(result) + ". Server und Internet prüfen.")
+        return
+    if code == 401 or code == 403:
+        chat_tested.emit(false, service_name + ": Chat HTTP " + str(code) + " – hier fehlt der API-Endpoint-Schlüssel oder eine Berechtigung.")
+        return
+    if code == 404:
+        chat_tested.emit(false, service_name + ": Chat HTTP 404 – Modell oder Chat-Endpunkt nicht gefunden. Modellname prüfen (OmniRoute ggf. auto).")
+        return
+    if code == 402 or code == 429:
+        chat_tested.emit(false, service_name + ": Chat HTTP " + str(code) + " – Kontingent, Abrechnung oder Rate-Limit prüfen.")
+        return
+    if code != 200:
+        chat_tested.emit(false, service_name + ": Chat HTTP " + str(code) + " – Modellrouting oder Provider-Zustand prüfen.")
+        return
+    var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+    if not data is Dictionary:
+        chat_tested.emit(false, service_name + ": Chat HTTP 200, aber ungültiges JSON.")
+        return
+    var reply := ""
+    if chat_test_provider == "omniroute":
+        var choices: Variant = data.get("choices", [])
+        if choices is Array and not choices.is_empty() and choices[0] is Dictionary:
+            var message: Variant = choices[0].get("message", {})
+            if message is Dictionary:
+                reply = str(message.get("content", ""))
+    else:
+        var candidates: Variant = data.get("candidates", [])
+        if candidates is Array and not candidates.is_empty() and candidates[0] is Dictionary:
+            var candidate_content: Variant = candidates[0].get("content", {})
+            if candidate_content is Dictionary:
+                for part in candidate_content.get("parts", []):
+                    if part is Dictionary:
+                        reply += str(part.get("text", ""))
+    if reply.strip_edges().is_empty():
+        chat_tested.emit(false, service_name + ": Chat antwortete HTTP 200, aber ohne lesbaren Text.")
+        return
+    chat_tested.emit(true, service_name + ": Testantwort erhalten: " + reply.strip_edges().substr(0, 160) + " (kein Projektcode gesendet).")
+
 func send(provider: String, model: String, api_key: String, project_name: String, user_text: String, history: Array) -> int:
-    if request_running:
+    if request_running or chat_test_running or diagnostic_running:
         return ERR_BUSY
     if model.is_empty() or model.length() > 120:
         return ERR_INVALID_PARAMETER
