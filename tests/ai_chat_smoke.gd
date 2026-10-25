@@ -196,6 +196,57 @@ func _run_tests() -> void:
     if not service._omniroute_503_hint(route_error.to_utf8_buffer()).contains("Modellroute"):
         _fail("OmniRoute route cause not recognized")
         return
+    # HTTP 200 darf bei leerem oder rein internem Reasoning nicht als Textantwort gelten.
+    var omni_parts := {"choices": [{"message": {"content": [
+        {"type": "text", "text": "O"},
+        {"type": "output_text", "text": "K"}
+    ]}, "finish_reason": "stop"}]}
+    if service._extract_final_chat_text(omni_parts, "omniroute") != "OK":
+        _fail("OmniRoute visible multi-part content parsing failed")
+        return
+    var omni_null := {"choices": [{"message": {"content": null, "reasoning_content": null}, "finish_reason": "length"}]}
+    if not service._extract_final_chat_text(omni_null, "omniroute").is_empty():
+        _fail("Null content must not be converted into user-visible text")
+        return
+    if not service._empty_chat_explanation(omni_null, "omniroute").contains("Token-Limit"):
+        _fail("Missing finish_reason=length explanation for HTTP 200 empty response")
+        return
+    var zero_output := {"choices": [{"message": {"content": null}, "finish_reason": "stop"}], "usage": {"completion_tokens": 0}}
+    if not service._empty_chat_explanation(zero_output, "omniroute").contains("0 Ausgabetokens"):
+        _fail("Missing diagnostic for OmniRoute HTTP 200 zero output tokens")
+        return
+    var reasoning_only := {"choices": [{"message": {"content": null, "reasoning_content": "SECRET_THINKING"}, "finish_reason": "stop"}]}
+    var thinking_hint: String = service._empty_chat_explanation(reasoning_only, "omniroute")
+    if not thinking_hint.contains("interne Modellverarbeitung") or thinking_hint.contains("SECRET_THINKING"):
+        _fail("Must not display hidden reasoning content")
+        return
+    var filter_only := {"choices": [{"message": {"content": null}, "finish_reason": "content_filter"}]}
+    if not service._empty_chat_explanation(filter_only, "omniroute").contains("gefiltert"):
+        _fail("Missing content_filter diagnostic")
+        return
+    var gemini_thought := {"candidates": [{"content": {"parts": [
+        {"thought": true, "text": "PRIVATE_THOUGHT"},
+        {"text": "OK"}
+    ]}}]}
+    if service._extract_final_chat_text(gemini_thought, "gemini") != "OK":
+        _fail("Gemini thought part must not be shown as final text")
+        return
+    var gemini_length := {"candidates": [{"finishReason": "MAX_TOKENS", "content": {"parts": []}}]}
+    if not service._empty_chat_explanation(gemini_length, "gemini").contains("MAX_TOKENS"):
+        _fail("Missing Gemini empty MAX_TOKENS diagnostic")
+        return
+    service.chat_test_running = true
+    service.chat_test_provider = "omniroute"
+    service._on_chat_test_completed(HTTPRequest.RESULT_SUCCESS, 200, PackedStringArray(), JSON.stringify(omni_null).to_utf8_buffer())
+    if chat_test_answers.size() != 6 or chat_test_answers[5].get("ok", true) or not str(chat_test_answers[5].get("details", "")).contains("Token-Limit"):
+        _fail("Empty HTTP 200 inference must explain the truncation, not be treated as success")
+        return
+    service.chat_test_running = true
+    service.chat_test_provider = "omniroute"
+    service._on_chat_test_completed(HTTPRequest.RESULT_SUCCESS, 200, PackedStringArray(), JSON.stringify(omni_parts).to_utf8_buffer())
+    if chat_test_answers.size() != 7 or not chat_test_answers[6].get("ok", false):
+        _fail("OpenAI-compatible array-form response must be accepted")
+        return
     # Speicherservice: eine separate Wiederherstellung je Projekt und Quelldatei.
     var recovery_project := "GameForge Autosave CI Test"
     var recovery_id: String = EDITOR_RECOVERY.snapshot_id(recovery_project, "local", "scripts/hero.gd", "")
@@ -319,7 +370,7 @@ func _run_tests() -> void:
         return
     EDITOR_RECOVERY.delete_snapshot("GameForge AI", autosave_id)
     dashboard.queue_free()
-    print("AI chat offline smoke tests passed: Gemini + OmniRoute + model diagnostics + short inference test + touch scrolling + autosave recovery + code review staging + error handling")
+    print("AI chat offline smoke tests passed: Gemini + OmniRoute + empty-200 and content parsing + model diagnostics + short inference test + touch scrolling + autosave recovery + code review staging + error handling")
     service.queue_free()
     quit(0)
 
