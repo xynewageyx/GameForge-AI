@@ -3,10 +3,14 @@ extends Node
 ## Geheimnisse werden nur als HTTP-Header verwendet und nicht auf Platte gespeichert.
 
 signal answered(success: bool, reply: String)
+signal diagnosed(success: bool, details: String)
 
 var http_request: HTTPRequest
 var request_running: bool = false
 var current_provider: String = ""
+var diagnostic_request: HTTPRequest
+var diagnostic_running: bool = false
+var diagnostic_provider: String = ""
 
 func _ready() -> void:
     http_request = HTTPRequest.new()
@@ -15,6 +19,12 @@ func _ready() -> void:
     http_request.max_redirects = 0
     add_child(http_request)
     http_request.request_completed.connect(_on_request_completed)
+    diagnostic_request = HTTPRequest.new()
+    diagnostic_request.timeout = 12.0
+    diagnostic_request.body_size_limit = 1048576
+    diagnostic_request.max_redirects = 0
+    add_child(diagnostic_request)
+    diagnostic_request.request_completed.connect(_on_diagnostic_completed)
 
 func is_busy() -> bool:
     return request_running
@@ -23,6 +33,88 @@ func cancel() -> void:
     if request_running:
         http_request.cancel_request()
         request_running = false
+
+## Prüft nur feste Modellkatalog-Endpunkte, ohne Chattext oder Projektcode zu senden.
+func is_diagnosing() -> bool:
+    return diagnostic_running
+
+func cancel_diagnosis() -> void:
+    if diagnostic_running:
+        diagnostic_request.cancel_request()
+        diagnostic_running = false
+
+func diagnose(provider: String, api_key: String) -> int:
+    if diagnostic_running or request_running:
+        return ERR_BUSY
+    var url := ""
+    var headers := PackedStringArray(["Accept: application/json"])
+    if provider == "omniroute":
+        url = "http://127.0.0.1:20128/v1/models"
+        if not api_key.is_empty():
+            headers.append("Authorization: Bearer " + api_key)
+    elif provider == "gemini":
+        if api_key.is_empty():
+            return ERR_UNAUTHORIZED
+        url = "https://generativelanguage.googleapis.com/v1beta/models"
+        headers.append("x-goog-api-key: " + api_key)
+    else:
+        return ERR_INVALID_PARAMETER
+    var err := diagnostic_request.request(url, headers, HTTPClient.METHOD_GET)
+    if err == OK:
+        diagnostic_running = true
+        diagnostic_provider = provider
+    return err
+
+func _on_diagnostic_completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+    if not diagnostic_running:
+        return
+    diagnostic_running = false
+    var service_name := "OmniRoute" if diagnostic_provider == "omniroute" else "Gemini"
+    if result != HTTPRequest.RESULT_SUCCESS:
+        var hint := service_name + ": Netzwerkfehler " + str(result) + "."
+        if diagnostic_provider == "omniroute":
+            hint += " OmniRoute in Termux starten und 127.0.0.1:20128 prüfen."
+        else:
+            hint += " Internetverbindung und Android-INTERNET-Berechtigung prüfen."
+        diagnosed.emit(false, hint)
+        return
+    if code == 401 or code == 403:
+        diagnosed.emit(false, service_name + ": HTTP " + str(code) + " – API-Schlüssel bzw. Endpoint-Berechtigung prüfen.")
+        return
+    if code == 404:
+        diagnosed.emit(false, service_name + ": HTTP 404 – der Modell-Endpunkt ist nicht vorhanden.")
+        return
+    if code == 429:
+        diagnosed.emit(false, service_name + ": HTTP 429 – zu viele Anfragen oder Kontingent erreicht.")
+        return
+    if code != 200:
+        diagnosed.emit(false, service_name + ": HTTP " + str(code) + " – bitte die Servereinstellungen prüfen.")
+        return
+    var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+    if not data is Dictionary:
+        diagnosed.emit(false, service_name + ": HTTP 200, aber keine gültige JSON-Modellliste.")
+        return
+    var entries: Variant = data.get("data", []) if diagnostic_provider == "omniroute" else data.get("models", [])
+    if not entries is Array:
+        diagnosed.emit(false, service_name + ": erreichbar, aber Modellliste hat ein unbekanntes Format.")
+        return
+    var examples := ""
+    var shown := 0
+    for entry in entries:
+        if not entry is Dictionary or shown >= 3:
+            continue
+        var model_id := str(entry.get("id", "")) if diagnostic_provider == "omniroute" else str(entry.get("name", ""))
+        if model_id.is_empty():
+            continue
+        examples += (", " if shown > 0 else "") + model_id
+        shown += 1
+    var message := service_name + " erreichbar. " + str(entries.size()) + " Modelle gefunden."
+    if shown > 0:
+        message += " Beispiele: " + examples
+    else:
+        message += " Noch kein Modell sichtbar; Modell/Routing prüfen."
+    message += " (Kein Test einer Chat-Antwort.)"
+    diagnosed.emit(true, message)
 
 func send(provider: String, model: String, api_key: String, project_name: String, user_text: String, history: Array) -> int:
     if request_running:
