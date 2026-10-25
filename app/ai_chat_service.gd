@@ -154,7 +154,7 @@ func test_chat(provider: String, model: String, api_key: String) -> int:
         payload = JSON.stringify({
             "model": model,
             "messages": [{"role": "user", "content": "Antworte ausschließlich mit OK."}],
-            "max_tokens": 20,
+            "max_tokens": 128,
             "stream": false
         })
     elif provider == "gemini":
@@ -167,7 +167,7 @@ func test_chat(provider: String, model: String, api_key: String) -> int:
         headers.append("x-goog-api-key: " + api_key)
         payload = JSON.stringify({
             "contents": [{"role": "user", "parts": [{"text": "Antworte ausschließlich mit OK."}]}],
-            "generationConfig": {"maxOutputTokens": 20}
+            "generationConfig": {"maxOutputTokens": 128}
         })
     else:
         return ERR_INVALID_PARAMETER
@@ -201,6 +201,91 @@ func _omniroute_503_hint(body: PackedByteArray) -> String:
         return "Keine geeignete Modellroute. Unter Providers einen aktiven Anbieter verbinden; Modell 'auto' probieren."
     return "Routing oder Anbieter derzeit nicht verfügbar. Unter Providers und Monitoring nachsehen."
 
+## Only final, user-visible content is returned; never substitute reasoning_content.
+## OpenAI-compatible providers may return either a plain string or content parts.
+func _visible_content(value: Variant) -> String:
+    if value is String:
+        return value
+    if value is Array:
+        var pieces := ""
+        for part in value:
+            if part is String:
+                pieces += part
+            elif part is Dictionary:
+                var kind := str(part.get("type", ""))
+                if kind == "text" or kind == "output_text" or kind.is_empty():
+                    if part.get("text", null) is String:
+                        pieces += str(part.get("text", ""))
+        return pieces
+    return ""
+
+func _extract_final_chat_text(data: Dictionary, provider: String) -> String:
+    var reply := ""
+    if provider == "omniroute":
+        var choices: Variant = data.get("choices", [])
+        if choices is Array:
+            for choice in choices:
+                if choice is Dictionary:
+                    var message: Variant = choice.get("message", {})
+                    if message is Dictionary:
+                        reply = _visible_content(message.get("content", null))
+                        if not reply.strip_edges().is_empty():
+                            break
+    else:
+        var candidates: Variant = data.get("candidates", [])
+        if candidates is Array:
+            for candidate in candidates:
+                if candidate is Dictionary:
+                    var candidate_content: Variant = candidate.get("content", {})
+                    if candidate_content is Dictionary:
+                        var parts: Variant = candidate_content.get("parts", [])
+                        if parts is Array:
+                            for part in parts:
+                                if part is Dictionary and not bool(part.get("thought", false)):
+                                    reply += _visible_content(part.get("text", null))
+                        if not reply.strip_edges().is_empty():
+                            break
+    return reply
+
+## Never echo arbitrary upstream JSON/error text, keys, prompts, or reasoning.
+func _empty_chat_explanation(data: Dictionary, provider: String) -> String:
+    if provider == "omniroute":
+        var choices: Variant = data.get("choices", [])
+        if not choices is Array or choices.is_empty():
+            return "OmniRoute lieferte HTTP 200 ohne choices. Provider-Routing und Monitoring prüfen."
+        var first: Variant = choices[0]
+        if not first is Dictionary:
+            return "OmniRoute lieferte kein lesbares Antwortobjekt."
+        var reason := str(first.get("finish_reason", ""))
+        if reason == "length":
+            return "OmniRoute: Ausgabe vor sichtbarem Text am Token-Limit beendet (finish_reason=length). Anderes Modell wählen oder Ausgabe-Limit erhöhen."
+        if reason == "content_filter":
+            return "OmniRoute: Der Anbieter hat die Ausgabe gefiltert (content_filter)."
+        if reason == "tool_calls" or reason == "function_call":
+            return "OmniRoute: Das Modell wollte ein Tool ausführen, hat aber keine Textantwort geliefert."
+        var usage: Variant = data.get("usage", {})
+        if usage is Dictionary:
+            if int(usage.get("completion_tokens", -1)) == 0:
+                return "OmniRoute: Der Anbieter meldet 0 Ausgabetokens trotz HTTP 200. Provider/Modell im Dashboard prüfen."
+        var message: Variant = first.get("message", {})
+        if message is Dictionary:
+            if not str(message.get("refusal", "")).is_empty():
+                return "OmniRoute: Der Anbieter hat eine Textantwort abgelehnt."
+            if not str(message.get("reasoning_content", "")).is_empty():
+                return "OmniRoute: Nur interne Modellverarbeitung, kein sichtbarer Antworttext. Anderes Modell oder größeres Token-Limit probieren."
+        return "OmniRoute: HTTP 200, aber kein sichtbarer Text (finish_reason=" + ("stop" if reason == "stop" else "unbekannt") + "). Modell und Monitoring prüfen."
+    var candidates: Variant = data.get("candidates", [])
+    if not candidates is Array or candidates.is_empty():
+        return "Gemini: Keine Text-Kandidaten zurückgegeben. Filter, Modell und Kontingent prüfen."
+    var candidate: Variant = candidates[0]
+    if candidate is Dictionary:
+        var reason := str(candidate.get("finishReason", ""))
+        if reason == "MAX_TOKENS":
+            return "Gemini: Ausgabe-Limit vor sichtbarem Text erreicht (MAX_TOKENS)."
+        if reason == "SAFETY" or reason == "BLOCKLIST" or reason == "PROHIBITED_CONTENT":
+            return "Gemini: Der Anbieter hat die Textausgabe gefiltert."
+    return "Gemini: HTTP 200, aber ohne lesbaren Antworttext. Modell und Ausgabelimit prüfen."
+
 func _on_chat_test_completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
     if not chat_test_running:
         return
@@ -229,23 +314,9 @@ func _on_chat_test_completed(result: int, code: int, _headers: PackedStringArray
     if not data is Dictionary:
         chat_tested.emit(false, service_name + ": Chat HTTP 200, aber ungültiges JSON.")
         return
-    var reply := ""
-    if chat_test_provider == "omniroute":
-        var choices: Variant = data.get("choices", [])
-        if choices is Array and not choices.is_empty() and choices[0] is Dictionary:
-            var message: Variant = choices[0].get("message", {})
-            if message is Dictionary:
-                reply = str(message.get("content", ""))
-    else:
-        var candidates: Variant = data.get("candidates", [])
-        if candidates is Array and not candidates.is_empty() and candidates[0] is Dictionary:
-            var candidate_content: Variant = candidates[0].get("content", {})
-            if candidate_content is Dictionary:
-                for part in candidate_content.get("parts", []):
-                    if part is Dictionary:
-                        reply += str(part.get("text", ""))
+    var reply := _extract_final_chat_text(data, chat_test_provider)
     if reply.strip_edges().is_empty():
-        chat_tested.emit(false, service_name + ": Chat antwortete HTTP 200, aber ohne lesbaren Text.")
+        chat_tested.emit(false, _empty_chat_explanation(data, chat_test_provider))
         return
     chat_tested.emit(true, service_name + ": Testantwort erhalten: " + reply.strip_edges().substr(0, 160) + " (kein Projektcode gesendet).")
 
@@ -328,28 +399,8 @@ func _on_request_completed(result: int, code: int, _headers: PackedStringArray, 
     if not data is Dictionary:
         answered.emit(false, "Die KI hat keine gültige JSON-Antwort geliefert.")
         return
-    var reply := ""
-    if current_provider == "gemini":
-        var candidates: Variant = data.get("candidates", [])
-        if candidates is Array and not candidates.is_empty():
-            var candidate: Variant = candidates[0]
-            if candidate is Dictionary:
-                var response_content: Variant = candidate.get("content", {})
-                if response_content is Dictionary:
-                    var parts: Variant = response_content.get("parts", [])
-                    if parts is Array:
-                        for part in parts:
-                            if part is Dictionary:
-                                reply += str(part.get("text", ""))
-    else:
-        var choices: Variant = data.get("choices", [])
-        if choices is Array and not choices.is_empty():
-            var choice: Variant = choices[0]
-            if choice is Dictionary:
-                var message: Variant = choice.get("message", {})
-                if message is Dictionary:
-                    reply = str(message.get("content", ""))
+    var reply := _extract_final_chat_text(data, current_provider)
     if reply.strip_edges().is_empty():
-        answered.emit(false, "Die KI hat keine Textantwort zurückgegeben (mögliche Sicherheitsfilter oder Modellauswahl).")
+        answered.emit(false, _empty_chat_explanation(data, current_provider))
         return
     answered.emit(true, reply)
