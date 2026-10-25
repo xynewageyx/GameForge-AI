@@ -832,6 +832,22 @@ func _update_ai_key_hint() -> void:
 func _open_omniroute_dashboard() -> void:
     OS.shell_open("http://127.0.0.1:20128/dashboard")
 
+func _open_omniroute_providers() -> void:
+    OS.shell_open("http://127.0.0.1:20128/dashboard/providers")
+
+func _choose_omniroute_auto_model() -> void:
+    if selected_tab != "KI-Chat" or ai_active_provider != "omniroute":
+        status.text = "Bitte zuerst OmniRoute als KI-Anbieter wählen."
+        return
+    if ai_service.call("is_busy") or ai_service.call("is_diagnosing") or ai_service.call("is_testing_chat"):
+        status.text = "Zuerst laufende KI-Anfrage abschließen."
+        return
+    ai_selected_model = "auto"
+    if ai_model_input != null and is_instance_valid(ai_model_input):
+        ai_model_input.text = "auto"
+    status.text = "Modell auf auto umgestellt. Test muss bewusst neu gestartet werden."
+
+
 func _test_ai_connection() -> void:
     if selected_tab != "KI-Chat" or ai_key_input == null or not is_instance_valid(ai_key_input):
         return
@@ -1367,6 +1383,9 @@ func _render_tab() -> void:
             ai_key_input.custom_minimum_size.y = 64
             content.add_child(ai_key_input)
             _update_ai_key_hint()
+            if ai_active_provider == "omniroute":
+                _add_button("OmniRoute-Modell auf auto umstellen (kein Teststart)", _choose_omniroute_auto_model)
+                _add_button("OmniRoute-Provider-Verbindungen öffnen", _open_omniroute_providers)
             _add_button("OmniRoute-Dashboard öffnen (Endpoint-Key erstellen)", _open_omniroute_dashboard)
             _add_label("Verbindung prüfen – ohne Chatnachricht oder Projektcode", 18)
             ai_diagnostic_button = Button.new()
