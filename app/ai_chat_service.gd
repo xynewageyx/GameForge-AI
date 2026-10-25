@@ -177,6 +177,30 @@ func test_chat(provider: String, model: String, api_key: String) -> int:
         chat_test_provider = provider
     return err
 
+## Nur bekannte Fehlerursachen zuordnen. Rohmeldungen können sensible Anbieter-Details enthalten.
+func _omniroute_503_hint(body: PackedByteArray) -> String:
+    if body.size() > 16384:
+        return "Antwort zu groß für eine sichere Diagnose. Providers und Monitoring prüfen."
+    var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
+    if not parsed is Dictionary:
+        return "Kein nutzbarer Fehlergrund. Providers und Monitoring prüfen."
+    var error_data: Variant = parsed.get("error", {})
+    var error_text := ""
+    if error_data is Dictionary:
+        error_text = str(error_data.get("code", "")) + " " + str(error_data.get("message", ""))
+    elif error_data is String:
+        error_text = error_data
+    error_text = error_text.to_lower()
+    if error_text.contains("usage_limit") or error_text.contains("quota") or error_text.contains("limit_reached"):
+        return "Anbieter-Kontingent oder Nutzungslimit erreicht. Anbieter und Quota prüfen."
+    if error_text.contains("auth_unavailable") or error_text.contains("no auth available") or error_text.contains("upstream accounts are unavailable"):
+        return "Keine einsatzbereiten Provider-Zugangsdaten. Unter Providers Verbindung erneuern."
+    if error_text.contains("circuit") or error_text.contains("temporarily unavailable"):
+        return "Anbieter vorübergehend blockiert/nicht verfügbar. Monitoring/Health prüfen."
+    if error_text.contains("no eligible") or error_text.contains("no available provider") or error_text.contains("no route") or error_text.contains("no candidates"):
+        return "Keine geeignete Modellroute. Unter Providers einen aktiven Anbieter verbinden; Modell 'auto' probieren."
+    return "Routing oder Anbieter derzeit nicht verfügbar. Unter Providers und Monitoring nachsehen."
+
 func _on_chat_test_completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
     if not chat_test_running:
         return
@@ -193,6 +217,10 @@ func _on_chat_test_completed(result: int, code: int, _headers: PackedStringArray
         return
     if code == 402 or code == 429:
         chat_tested.emit(false, service_name + ": Chat HTTP " + str(code) + " – Kontingent, Abrechnung oder Rate-Limit prüfen.")
+        return
+    if code == 503:
+        var hint := _omniroute_503_hint(body) if chat_test_provider == "omniroute" else "Der KI-Anbieter ist momentan nicht verfügbar."
+        chat_tested.emit(false, service_name + ": Chat HTTP 503 – " + hint)
         return
     if code != 200:
         chat_tested.emit(false, service_name + ": Chat HTTP " + str(code) + " – Modellrouting oder Provider-Zustand prüfen.")
@@ -290,6 +318,8 @@ func _on_request_completed(result: int, code: int, _headers: PackedStringArray, 
             hint += " – Modell oder Endpunkt nicht gefunden."
         elif code == 429:
             hint += " – Rate-Limit oder Kontingent erreicht."
+        elif code == 503 and current_provider == "omniroute":
+            hint += " – " + _omniroute_503_hint(body)
         elif code >= 500:
             hint += " – Serverfehler; später erneut versuchen."
         answered.emit(false, hint)
