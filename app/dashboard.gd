@@ -56,6 +56,8 @@ var ai_message_input: TextEdit
 var ai_send_button: Button
 var ai_diagnostic_button: Button
 var ai_diagnostic_label: Label
+var ai_chat_test_button: Button
+var ai_chat_test_label: Label
 var ai_history: Array = []
 var ai_display_text: String = ""
 var ai_pending_prompt: String = ""
@@ -101,6 +103,7 @@ func _ready() -> void:
     add_child(ai_service)
     ai_service.connect("answered", Callable(self, "_on_ai_answered"))
     ai_service.connect("diagnosed", Callable(self, "_on_ai_diagnosed"))
+    ai_service.connect("chat_tested", Callable(self, "_on_ai_chat_tested"))
     _build_ui()
 
 func _build_ui() -> void:
@@ -230,6 +233,7 @@ func _select_tab(tab: String) -> void:
         _remember_ai_draft()
     if selected_tab == "KI-Chat" and tab != selected_tab:
         ai_service.call("cancel_diagnosis")
+        ai_service.call("cancel_chat_test")
         _cancel_ai_request()
         _clear_ai_key()
     _cancel_build_confirmation()
@@ -275,6 +279,7 @@ func _select_project(name: String) -> void:
         analysis_source_snapshot.clear()
         _cancel_ai_request()
         ai_service.call("cancel_diagnosis")
+        ai_service.call("cancel_chat_test")
         _clear_ai_key()
         ai_history.clear()
         ai_display_text = ""
@@ -799,10 +804,15 @@ func _cancel_ai_request() -> void:
 
 func _on_ai_provider_selected(index: int) -> void:
     ai_service.call("cancel_diagnosis")
+    ai_service.call("cancel_chat_test")
     if ai_diagnostic_button != null and is_instance_valid(ai_diagnostic_button):
         ai_diagnostic_button.disabled = false
     if ai_diagnostic_label != null and is_instance_valid(ai_diagnostic_label):
         ai_diagnostic_label.text = "Verbindung noch nicht geprüft."
+    if ai_chat_test_button != null and is_instance_valid(ai_chat_test_button):
+        ai_chat_test_button.disabled = false
+    if ai_chat_test_label != null and is_instance_valid(ai_chat_test_label):
+        ai_chat_test_label.text = "Chat-Test noch nicht durchgeführt."
     ai_active_provider = "omniroute" if index == 0 else "gemini"
     ai_selected_model = "auto/coding" if index == 0 else "gemini-2.5-flash"
     if ai_model_input != null and is_instance_valid(ai_model_input):
@@ -825,7 +835,7 @@ func _open_omniroute_dashboard() -> void:
 func _test_ai_connection() -> void:
     if selected_tab != "KI-Chat" or ai_key_input == null or not is_instance_valid(ai_key_input):
         return
-    if ai_service.call("is_busy") or ai_service.call("is_diagnosing"):
+    if ai_service.call("is_busy") or ai_service.call("is_diagnosing") or ai_service.call("is_testing_chat"):
         status.text = "Bitte laufende KI-Anfrage zuerst abschließen."
         return
     var key := ai_key_input.text.strip_edges()
@@ -856,6 +866,34 @@ func _on_ai_diagnosed(success: bool, details: String) -> void:
     else:
         status.text = "KI-Verbindungstest fehlgeschlagen."
 
+func _test_ai_chat() -> void:
+    if selected_tab != "KI-Chat" or ai_key_input == null or not is_instance_valid(ai_key_input):
+        return
+    if ai_service.call("is_busy") or ai_service.call("is_diagnosing") or ai_service.call("is_testing_chat"):
+        status.text = "Eine KI-Anfrage ist noch aktiv."
+        return
+    var model := ai_model_input.text.strip_edges()
+    var key := ai_key_input.text.strip_edges()
+    if ai_active_provider == "gemini" and key.is_empty():
+        status.text = "Für den Gemini-Chat-Test ist ein API-Schlüssel notwendig."
+        return
+    var err: int = ai_service.call("test_chat", ai_active_provider, model, key)
+    if err != OK:
+        status.text = "KI-Chat-Test konnte nicht starten (" + str(err) + ")."
+        return
+    ai_chat_test_button.disabled = true
+    ai_chat_test_label.text = "Kurze Testnachricht wird gesendet; mögliche Provider-Kontingentnutzung..."
+    status.text = "Echte KI-Testantwort wird geprüft..."
+
+func _on_ai_chat_tested(success: bool, details: String) -> void:
+    if selected_tab != "KI-Chat":
+        return
+    if ai_chat_test_button != null and is_instance_valid(ai_chat_test_button):
+        ai_chat_test_button.disabled = false
+    if ai_chat_test_label != null and is_instance_valid(ai_chat_test_label):
+        ai_chat_test_label.text = details
+    status.text = "KI-Testantwort erfolgreich empfangen." if success else "KI-Chat-Test fehlgeschlagen."
+
 func _send_ai_message() -> void:
     if ai_message_input == null or not is_instance_valid(ai_message_input):
         return
@@ -864,7 +902,7 @@ func _send_ai_message() -> void:
         ai_message_input.text = ""
 
 func _start_ai_request(message: String, is_analysis: bool, display_message: String) -> bool:
-    if selected_tab != "KI-Chat" or ai_service.call("is_busy"):
+    if selected_tab != "KI-Chat" or ai_service.call("is_busy") or ai_service.call("is_diagnosing") or ai_service.call("is_testing_chat"):
         status.text = "Es läuft bereits eine KI-Anfrage."
         return false
     var model := ai_model_input.text.strip_edges()
@@ -1342,6 +1380,18 @@ func _render_tab() -> void:
             ai_diagnostic_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
             ai_diagnostic_label.add_theme_font_size_override("font_size", 18)
             content.add_child(ai_diagnostic_label)
+            _add_label("Echten Chat-Endpunkt getrennt testen (sendet nur einen kurzen OK-Test; kann Provider-Kontingent verbrauchen)", 18)
+            ai_chat_test_button = Button.new()
+            ai_chat_test_button.text = "Kurze KI-Testantwort anfordern"
+            ai_chat_test_button.custom_minimum_size.y = 72
+            ai_chat_test_button.disabled = ai_service.call("is_busy") or ai_service.call("is_diagnosing") or ai_service.call("is_testing_chat")
+            ai_chat_test_button.pressed.connect(_test_ai_chat)
+            content.add_child(ai_chat_test_button)
+            ai_chat_test_label = Label.new()
+            ai_chat_test_label.text = "Noch kein Chat-Test durchgeführt. Keine Projektdateien werden übertragen."
+            ai_chat_test_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+            ai_chat_test_label.add_theme_font_size_override("font_size", 18)
+            content.add_child(ai_chat_test_label)
             ai_chat_log = TextEdit.new()
             ai_chat_log.custom_minimum_size.y = 360
             ai_chat_log.size_flags_horizontal = Control.SIZE_EXPAND_FILL
