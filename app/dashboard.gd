@@ -817,7 +817,10 @@ func _update_ai_key_hint() -> void:
     if ai_active_provider == "gemini":
         ai_key_input.placeholder_text = "Gemini API-Key (nur im Arbeitsspeicher)"
     else:
-        ai_key_input.placeholder_text = "OmniRoute Endpoint-Key (falls erforderlich, sonst leer)"
+        ai_key_input.placeholder_text = "OmniRoute Endpoint-Key (Dashboard > Endpoints)"
+
+func _open_omniroute_dashboard() -> void:
+    OS.shell_open("http://127.0.0.1:20128/dashboard")
 
 func _test_ai_connection() -> void:
     if selected_tab != "KI-Chat" or ai_key_input == null or not is_instance_valid(ai_key_input):
@@ -846,7 +849,12 @@ func _on_ai_diagnosed(success: bool, details: String) -> void:
         ai_diagnostic_button.disabled = false
     if ai_diagnostic_label != null and is_instance_valid(ai_diagnostic_label):
         ai_diagnostic_label.text = details
-    status.text = "KI-Endpunkt erreichbar (Chat ungetestet)." if success else "KI-Verbindungstest fehlgeschlagen."
+    if success:
+        status.text = "KI-Modellliste erreichbar. Chat noch nicht getestet."
+    elif ai_active_provider == "omniroute" and details.contains("HTTP 401"):
+        status.text = "OmniRoute erreichbar – Endpoint-Key für Modellliste prüfen."
+    else:
+        status.text = "KI-Verbindungstest fehlgeschlagen."
 
 func _send_ai_message() -> void:
     if ai_message_input == null or not is_instance_valid(ai_message_input):
@@ -1321,6 +1329,7 @@ func _render_tab() -> void:
             ai_key_input.custom_minimum_size.y = 64
             content.add_child(ai_key_input)
             _update_ai_key_hint()
+            _add_button("OmniRoute-Dashboard öffnen (Endpoint-Key erstellen)", _open_omniroute_dashboard)
             _add_label("Verbindung prüfen – ohne Chatnachricht oder Projektcode", 18)
             ai_diagnostic_button = Button.new()
             ai_diagnostic_button.text = "OmniRoute / Gemini Verbindung testen"
