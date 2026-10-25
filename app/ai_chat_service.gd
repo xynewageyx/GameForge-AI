@@ -79,7 +79,10 @@ func _on_diagnostic_completed(result: int, code: int, _headers: PackedStringArra
         diagnosed.emit(false, hint)
         return
     if code == 401 or code == 403:
-        diagnosed.emit(false, service_name + ": HTTP " + str(code) + " – API-Schlüssel bzw. Endpoint-Berechtigung prüfen.")
+        if diagnostic_provider == "omniroute":
+            diagnosed.emit(false, "OmniRoute: HTTP " + str(code) + " für /v1/models. Unter Dashboard > Endpoints einen Endpoint-Key erstellen und oben eingeben. Hinweis: Modellliste und Chat können unterschiedlich geschützt sein; 401 hier beweist noch keinen Chatfehler.")
+        else:
+            diagnosed.emit(false, "Gemini: HTTP " + str(code) + " – Gemini-API-Schlüssel und Berechtigungen prüfen.")
         return
     if code == 404:
         diagnosed.emit(false, service_name + ": HTTP 404 – der Modell-Endpunkt ist nicht vorhanden.")
