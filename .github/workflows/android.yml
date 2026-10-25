@@ -50,11 +50,33 @@ jobs:
           grep -E 'export/android/(android_sdk_path|java_sdk_path)' "$HOME/.config/godot/editor_settings-4.7.tres"
           test -d "$ANDROID_HOME"
           test -d "$JAVA_HOME"
-      - name: Generate Android debug keystore
+      - name: Configure Android debug signing (reusable when secret is set)
+        id: signing
+        shell: bash
+        env:
+          GAMEFORGE_KEYSTORE_BASE64: ${{ secrets.GAMEFORGE_DEBUG_KEYSTORE_BASE64 }}
         run: |
+          set -euo pipefail
+          umask 077
           mkdir -p "$HOME/.android"
-          keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=GameForge AI,C=DE" -noprompt
+          if [ -n "${GAMEFORGE_KEYSTORE_BASE64:-}" ]; then
+            printf '%s' "$GAMEFORGE_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
+            test -s "$HOME/.android/debug.keystore"
+            if ! keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null 2>&1; then
+              echo "::error::Configured signing secret is not a valid debug keystore with alias androiddebugkey and password android."
+              exit 1
+            fi
+            echo "stable=true" >> "$GITHUB_OUTPUT"
+            echo "### Android signing: persistent keystore from GitHub Actions secret" >> "$GITHUB_STEP_SUMMARY"
+          else
+            keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=GameForge AI,C=DE" -noprompt
+            echo "stable=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::GAMEFORGE_DEBUG_KEYSTORE_BASE64 is missing. This APK uses a new signing key; updates may require uninstalling and will erase app-local files."
+            echo "### Android signing: temporary key (not update-compatible). Configure GAMEFORGE_DEBUG_KEYSTORE_BASE64 to preserve one signature." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          chmod 600 "$HOME/.android/debug.keystore"
           test -s "$HOME/.android/debug.keystore"
+          keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | grep -m1 "SHA256:" || true
       - name: Configure CI debug signing
         shell: bash
         run: |
@@ -71,7 +93,13 @@ jobs:
               if key not in content:
                   raise SystemExit("Missing expected signing preset entry: " + key.split("=")[0])
               content = content.replace(key, value)
+          version_code = int(os.environ["GITHUB_RUN_NUMBER"])
+          marker = 'package/name="GameForge AI Starter"'
+          if marker not in content:
+              raise SystemExit("Missing expected Android package/name entry")
+          content = content.replace(marker, marker + '\\npackage/version_code=' + str(version_code), 1)
           preset.write_text(content)
+          print("Android versionCode configured:", version_code)
           print("CI debug signing configured; keystore exists:", Path(os.environ["HOME"] + "/.android/debug.keystore").is_file())
           PY
       - name: Align Godot default debug keystore
