@@ -148,6 +148,16 @@ jobs:
           mkdir -p build
           godot --headless --verbose --path . --export-debug "Android" build/GameForgeAI.apk
           test -s build/GameForgeAI.apk
+      - name: Verify APK signature and Android version
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_SIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          test -x "$APK_SIGNER"
+          "$APK_SIGNER" verify --print-certs build/GameForgeAI.apk | grep -E 'Signer #1 certificate SHA-256 digest:'
+          if [ -x "$ANDROID_HOME/build-tools/35.0.0/aapt" ]; then
+            "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging build/GameForgeAI.apk | grep -m1 '^package:'
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: GameForgeAI-debug-APK
