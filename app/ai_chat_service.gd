@@ -265,13 +265,16 @@ func _empty_chat_explanation(data: Dictionary, provider: String) -> String:
             return "OmniRoute: Das Modell wollte ein Tool ausführen, hat aber keine Textantwort geliefert."
         var usage: Variant = data.get("usage", {})
         if usage is Dictionary:
-            if int(usage.get("completion_tokens", -1)) == 0:
+            var completion_count: Variant = usage.get("completion_tokens", -1)
+            if (completion_count is int or completion_count is float) and int(completion_count) == 0:
                 return "OmniRoute: Der Anbieter meldet 0 Ausgabetokens trotz HTTP 200. Provider/Modell im Dashboard prüfen."
         var message: Variant = first.get("message", {})
         if message is Dictionary:
-            if not str(message.get("refusal", "")).is_empty():
+            var refusal: Variant = message.get("refusal", null)
+            if refusal is String and not refusal.is_empty():
                 return "OmniRoute: Der Anbieter hat eine Textantwort abgelehnt."
-            if not str(message.get("reasoning_content", "")).is_empty():
+            var thinking: Variant = message.get("reasoning_content", null)
+            if thinking is String and not thinking.is_empty():
                 return "OmniRoute: Nur interne Modellverarbeitung, kein sichtbarer Antworttext. Anderes Modell oder größeres Token-Limit probieren."
         return "OmniRoute: HTTP 200, aber kein sichtbarer Text (finish_reason=" + ("stop" if reason == "stop" else "unbekannt") + "). Modell und Monitoring prüfen."
     var candidates: Variant = data.get("candidates", [])
