@@ -122,6 +122,14 @@ Im Reiter **KI-Chat** gibt es die Schaltfläche **„OmniRoute / Gemini Verbindu
 
 Nach erfolgreicher Diagnose kann eine **kurze, unkritische Testnachricht** gesendet werden, beispielsweise „Antworte mit OK“. Bei fehlgeschlagenem Test keine Geheimnisse in Screenshots oder in diesen Chat kopieren.
 
+## OmniRoute Chat HTTP 200 ohne lesbaren Text
+
+Wenn im **KI-Chat** beim Kurztest `HTTP 200` zurückkommt, aber kein sichtbarer Text, ist nur der HTTP-Aufruf erfolgreich – **noch keine KI-Textantwort**. Mögliche Ursachen: Das Token-Limit ist während interner Modellverarbeitung erreicht worden (`finish_reason=length`), ein Provider lieferte null Ausgabetokens, die Ausgabe wurde gefiltert, oder ein von OmniRoute weitergereichtes Modell liefert ein anderes Inhaltsformat. Für bestimmte Routing-/Reasoning-Modelle ist dieses Verhalten bereits beobachtet worden; es kann auch bei scheinbar erfolgreichem Provider-HTTP-Status auftreten.
+
+**Neuer Kurztest:** Das sichtbare Antwortlimit wurde von 20 auf **128 Tokens** erhöht, damit ein Modell mit internem Denkaufwand überhaupt Raum für eine sichtbare Antwort hat. Das kann bei einem abrechnenden Anbieter mehr Kontingent als zuvor verbrauchen. Ein Fehler löst **keinen** automatischen, zusätzlichen KI-Aufruf aus. Die App wertet sowohl Textzeichenketten als auch unterstützte Inhaltsbausteine (`content`-Array) aus, zeigt aber **keine** internen `reasoning_content`-Inhalte. Fehlende sichtbare Antworten werden anhand sicherer Metadaten wie `finish_reason` und `usage.completion_tokens` eingeordnet, ohne Original-Antworten oder sensible Provider-Daten einzublenden.
+
+**Prüfen:** Zuerst das Modell `auto` im KI-Chat wählen und **einmal** bewusst den Kurztest starten. Wenn weiterhin `HTTP 200` ohne Antwort erscheint, bei **OmniRoute → Monitoring/Logs** den `finish_reason`, die ausgegebenen Tokens und das verwendete Modell nachsehen. Keine Zugangsschlüssel, Antworten mit persönlichen Daten oder Roh-JSON mit Geheimnissen im Chat teilen. Die Modellliste `GET /v1/models` kann weiter HTTP 401 melden, obwohl der Chat-Endpunkt antwortet; das sind separate Prüfungen.
+
 ## OmniRoute Chat HTTP 503: kein einsatzbereiter Anbieter
 
 Wenn GameForge AI beim **echten KI-Chat** `HTTP 503` meldet, ist der lokale OmniRoute-Server zwar erreichbar, aber das angeforderte Modell/der Upstream momentan nicht verfügbar. Häufige Ursachen: kein aktives Provider-Konto für die automatische Route, abgelaufene Upstream-Anmeldung, Provider-Circuit-Breaker oder ein ausgeschöpftes Kontingent. Ein `503` allein beweist **nicht**, welche der Ursachen zutrifft.
