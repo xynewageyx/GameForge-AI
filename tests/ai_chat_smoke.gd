@@ -4,6 +4,7 @@ const AI_CODE_TOOLS = preload("res://app/ai_code_tools.gd")
 const EDITOR_RECOVERY = preload("res://app/editor_recovery.gd")
 
 var answers: Array = []
+var diagnostic_answers: Array = []
 
 func _initialize() -> void:
     call_deferred("_run_tests")
@@ -88,6 +89,46 @@ func _run_tests() -> void:
     if answers.size() != 3 or answers[2].get("ok", true):
         _fail("HTTP errors must not be reported as success")
         return
+    # Lokaler Modell-Endpunkt-Test ohne Netzwerkanfrage und ohne Übertragung von Chattext.
+    if service.diagnose("gemini", "") != ERR_UNAUTHORIZED:
+        _fail("Gemini diagnostic without API key must be rejected")
+        return
+    if service.diagnose("invalid_provider", "x") != ERR_INVALID_PARAMETER:
+        _fail("Unknown diagnostic provider must be rejected")
+        return
+    service.connect("diagnosed", Callable(self, "_record_diagnosis"))
+    service.diagnostic_running = true
+    service.diagnostic_provider = "omniroute"
+    var models_reply := JSON.stringify({"data": [{"id": "auto/coding"}, {"id": "gemini/example"}]})
+    service._on_diagnostic_completed(HTTPRequest.RESULT_SUCCESS, 200, PackedStringArray(), models_reply.to_utf8_buffer())
+    if diagnostic_answers.size() != 1 or not diagnostic_answers[0].get("ok", false):
+        _fail("OmniRoute model listing diagnostic failed")
+        return
+    if not str(diagnostic_answers[0].get("details", "")).contains("auto/coding"):
+        _fail("Diagnostic did not show the available model ID")
+        return
+    if service.is_diagnosing() or service.is_busy():
+        _fail("Diagnostic must not keep HTTP request or chat marked busy")
+        return
+    service.diagnostic_running = true
+    service.diagnostic_provider = "gemini"
+    var gemini_models := JSON.stringify({"models": [{"name": "models/gemini-2.5-flash"}]})
+    service._on_diagnostic_completed(HTTPRequest.RESULT_SUCCESS, 200, PackedStringArray(), gemini_models.to_utf8_buffer())
+    if diagnostic_answers.size() != 2 or not diagnostic_answers[1].get("ok", false):
+        _fail("Gemini model listing diagnostic failed")
+        return
+    service.diagnostic_running = true
+    service.diagnostic_provider = "omniroute"
+    service._on_diagnostic_completed(HTTPRequest.RESULT_SUCCESS, 401, PackedStringArray(), PackedByteArray())
+    if diagnostic_answers.size() != 3 or diagnostic_answers[2].get("ok", true):
+        _fail("Diagnostic must reject unauthorised requests")
+        return
+    service.diagnostic_running = true
+    service.diagnostic_provider = "omniroute"
+    service._on_diagnostic_completed(HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray())
+    if diagnostic_answers.size() != 4 or diagnostic_answers[3].get("ok", true):
+        _fail("Diagnostic must report local connection failure")
+        return
     # Speicherservice: eine separate Wiederherstellung je Projekt und Quelldatei.
     var recovery_project := "GameForge Autosave CI Test"
     var recovery_id: String = EDITOR_RECOVERY.snapshot_id(recovery_project, "local", "scripts/hero.gd", "")
@@ -161,6 +202,12 @@ func _run_tests() -> void:
         _fail("Original file was not restored after review")
         return
     dashboard._select_tab("KI-Chat")
+    if dashboard.ai_diagnostic_button == null or dashboard.ai_diagnostic_label == null:
+        _fail("Missing in-app AI connection test controls")
+        return
+    if dashboard.ai_diagnostic_button.disabled:
+        _fail("Connection test must be available when chat is idle")
+        return
     if dashboard.ai_chat_log.get_v_scroll_bar().custom_minimum_size.x < 44.0:
         _fail("Chat history scrollbar is too narrow for touch")
         return
@@ -191,12 +238,15 @@ func _run_tests() -> void:
         return
     EDITOR_RECOVERY.delete_snapshot("GameForge AI", autosave_id)
     dashboard.queue_free()
-    print("AI chat offline smoke tests passed: Gemini + OmniRoute + touch scrolling + autosave recovery + code review staging + error handling")
+    print("AI chat offline smoke tests passed: Gemini + OmniRoute + model diagnostics + touch scrolling + autosave recovery + code review staging + error handling")
     service.queue_free()
     quit(0)
 
 func _record_answer(ok: bool, reply: String) -> void:
     answers.append({"ok": ok, "reply": reply})
+
+func _record_diagnosis(ok: bool, details: String) -> void:
+    diagnostic_answers.append({"ok": ok, "details": details})
 
 func _fail(message: String) -> void:
     push_error(message)
