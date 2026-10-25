@@ -97,7 +97,7 @@ jobs:
           marker = 'package/name="GameForge AI Starter"'
           if marker not in content:
               raise SystemExit("Missing expected Android package/name entry")
-          content = content.replace(marker, marker + '\\npackage/version_code=' + str(version_code), 1)
+          content = content.replace(marker, marker + chr(10) + 'package/version_code=' + str(version_code), 1)
           preset.write_text(content)
           print("Android versionCode configured:", version_code)
           print("CI debug signing configured; keystore exists:", Path(os.environ["HOME"] + "/.android/debug.keystore").is_file())
