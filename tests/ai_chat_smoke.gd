@@ -5,6 +5,7 @@ const EDITOR_RECOVERY = preload("res://app/editor_recovery.gd")
 
 var answers: Array = []
 var diagnostic_answers: Array = []
+var chat_test_answers: Array = []
 
 func _initialize() -> void:
     call_deferred("_run_tests")
@@ -132,6 +133,46 @@ func _run_tests() -> void:
     if diagnostic_answers.size() != 4 or diagnostic_answers[3].get("ok", true):
         _fail("Diagnostic must report local connection failure")
         return
+    # Kurzer echter Inferenz-Test: nur lokale Parsing-Simulation, kein Netzwerk/keine Tokens.
+    if service.test_chat("gemini", "gemini-2.5-flash", "") != ERR_UNAUTHORIZED:
+        _fail("Gemini chat test without API key must be rejected")
+        return
+    if service.test_chat("omniroute", "", "") != ERR_INVALID_PARAMETER:
+        _fail("Chat test must require a model name")
+        return
+    if service.test_chat("invalid_provider", "auto", "") != ERR_INVALID_PARAMETER:
+        _fail("Unknown chat test provider must be rejected")
+        return
+    service.connect("chat_tested", Callable(self, "_record_chat_test"))
+    service.chat_test_running = true
+    service.chat_test_provider = "omniroute"
+    var test_chat_reply := JSON.stringify({"choices": [{"message": {"role": "assistant", "content": "OK"}}]})
+    service._on_chat_test_completed(HTTPRequest.RESULT_SUCCESS, 200, PackedStringArray(), test_chat_reply.to_utf8_buffer())
+    if chat_test_answers.size() != 1 or not chat_test_answers[0].get("ok", false) or not str(chat_test_answers[0].get("details", "")).contains("OK"):
+        _fail("OmniRoute chat test response could not be parsed")
+        return
+    if service.is_testing_chat():
+        _fail("Chat test remained busy after completion")
+        return
+    service.chat_test_running = true
+    service.chat_test_provider = "omniroute"
+    service._on_chat_test_completed(HTTPRequest.RESULT_SUCCESS, 401, PackedStringArray(), PackedByteArray())
+    if chat_test_answers.size() != 2 or chat_test_answers[1].get("ok", true):
+        _fail("Inference 401 must be reported as chat authentication failure")
+        return
+    service.chat_test_running = true
+    service.chat_test_provider = "gemini"
+    var gemini_chat_reply := JSON.stringify({"candidates": [{"content": {"parts": [{"text": "OK"}]}}]})
+    service._on_chat_test_completed(HTTPRequest.RESULT_SUCCESS, 200, PackedStringArray(), gemini_chat_reply.to_utf8_buffer())
+    if chat_test_answers.size() != 3 or not chat_test_answers[2].get("ok", false):
+        _fail("Gemini chat test response could not be parsed")
+        return
+    service.chat_test_running = true
+    service.chat_test_provider = "omniroute"
+    service._on_chat_test_completed(HTTPRequest.RESULT_SUCCESS, 429, PackedStringArray(), PackedByteArray())
+    if chat_test_answers.size() != 4 or chat_test_answers[3].get("ok", true):
+        _fail("Chat test must not treat rate-limit as a success")
+        return
     # Speicherservice: eine separate Wiederherstellung je Projekt und Quelldatei.
     var recovery_project := "GameForge Autosave CI Test"
     var recovery_id: String = EDITOR_RECOVERY.snapshot_id(recovery_project, "local", "scripts/hero.gd", "")
@@ -205,6 +246,9 @@ func _run_tests() -> void:
         _fail("Original file was not restored after review")
         return
     dashboard._select_tab("KI-Chat")
+    if dashboard.ai_chat_test_button == null or dashboard.ai_chat_test_label == null:
+        _fail("Missing separate in-app chat test controls")
+        return
     if dashboard.ai_diagnostic_button == null or dashboard.ai_diagnostic_label == null:
         _fail("Missing in-app AI connection test controls")
         return
@@ -245,7 +289,7 @@ func _run_tests() -> void:
         return
     EDITOR_RECOVERY.delete_snapshot("GameForge AI", autosave_id)
     dashboard.queue_free()
-    print("AI chat offline smoke tests passed: Gemini + OmniRoute + model diagnostics + touch scrolling + autosave recovery + code review staging + error handling")
+    print("AI chat offline smoke tests passed: Gemini + OmniRoute + model diagnostics + short inference test + touch scrolling + autosave recovery + code review staging + error handling")
     service.queue_free()
     quit(0)
 
@@ -254,6 +298,9 @@ func _record_answer(ok: bool, reply: String) -> void:
 
 func _record_diagnosis(ok: bool, details: String) -> void:
     diagnostic_answers.append({"ok": ok, "details": details})
+
+func _record_chat_test(ok: bool, details: String) -> void:
+    chat_test_answers.append({"ok": ok, "details": details})
 
 func _fail(message: String) -> void:
     push_error(message)
