@@ -122,6 +122,19 @@ Im Reiter **KI-Chat** gibt es die Schaltfläche **„OmniRoute / Gemini Verbindu
 
 Nach erfolgreicher Diagnose kann eine **kurze, unkritische Testnachricht** gesendet werden, beispielsweise „Antworte mit OK“. Bei fehlgeschlagenem Test keine Geheimnisse in Screenshots oder in diesen Chat kopieren.
 
+## Separater Chat-Endpunkt-Test bei OmniRoute HTTP 401
+
+`GET /v1/models` und `POST /v1/chat/completions` können in OmniRoute **unterschiedliche Authentifizierungsregeln** haben. Ein `HTTP 401` im Modelllisten-Test beweist **nicht**, dass der eigentliche Chat ebenfalls gesperrt ist.
+
+Im Reiter **KI-Chat** stehen zwei getrennte Schaltflächen bereit:
+
+- **OmniRoute / Gemini Verbindung testen**: Prüft nur `GET /v1/models` beziehungsweise die Gemini-Modellliste; sendet keine Nachricht und verbraucht keine Inferenz-Tokens.
+- **Kurze KI-Testantwort anfordern**: Ruft den **echten Chat-Endpunkt** mit der Nachricht „Antworte ausschließlich mit OK.“ auf. Es werden **keine** privaten Projektdateien, kein Chatverlauf und kein GDScript übertragen. Die Antwort ist auf maximal 20 Ausgabe-Tokens begrenzt. **Der Provider kann hierfür trotzdem Inferenzkontingent verbrauchen oder Gebühren berechnen**; deshalb nur bewusst betätigen.
+
+Wenn nur die Modellliste `401` meldet, lässt sich ein funktionierender Chat mit dem zweiten Test unabhängig bestätigen. Ein `401/403` beim Chat-Test deutet auf fehlenden oder nicht akzeptierten Endpoint-Schlüssel hin; `404` eher auf ein nicht vorhandenes Modell oder eine nicht passende Route und `429` auf Rate-Limits/Kontingente. Bei OmniRoute ggf. statt `auto/coding` den Modellnamen `auto` probieren, falls dieser in der lokalen Konfiguration unterstützt wird.
+
+Die Schaltflächen zeigen Ergebnisse getrennt an. Der Test wird beim Verlassen des Chats abgebrochen und verändert keine GitHub-Dateien. Geheimnisse werden nur in HTTP-Headern verwendet und nicht dauerhaft gespeichert.
+
 ## KI-Chat: OmniRoute oder Gemini
 
 Unter **KI-Chat** können zwei Anbindungen gewählt werden. Beide erzeugen nur **Antworten und Codevorschläge**. Die App führt KI-Antworten nicht automatisch aus und verändert weder Projektdateien noch GitHub ohne einen separaten Bedienvorgang.
