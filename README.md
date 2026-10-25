@@ -19,7 +19,7 @@ Der Android-Workflow kann dieselbe Debug-Signatur in jedem Build verwenden. Daf�
 
 ```bash
 pkg update
-pkg install openjdk-17 gh
+pkg install openjdk-21 gh
 mkdir -p ~/.android
 keytool -genkeypair -keystore ~/.android/gameforge-debug.keystore \
   -storepass android -alias androiddebugkey -keypass android \
@@ -29,7 +29,7 @@ gh auth login
 base64 -w0 ~/.android/gameforge-debug.keystore | gh secret set GAMEFORGE_DEBUG_KEYSTORE_BASE64 -R xynewageyx/GameForge-AI
 ```
 
-Die Befehle erzeugen bewusst nur einen **Debug-Schlüssel** mit dem üblichen Android-Debug-Passwort. Er ist **nicht für eine öffentliche Release-Version/Play-Store-Publikation** geeignet. Der GitHub-CLI-Login erfolgt über das eigene GitHub-Konto. Falls Termux `openjdk-17` nicht anbietet, ein verfügbares OpenJDK-Paket mit `keytool` verwenden.
+Die Befehle erzeugen bewusst nur einen **Debug-Schlüssel** mit dem üblichen Android-Debug-Passwort. Er ist **nicht für eine öffentliche Release-Version/Play-Store-Publikation** geeignet. Der GitHub-CLI-Login erfolgt über das eigene GitHub-Konto. Falls Termux `openjdk-21` nicht anbietet, mit `pkg search openjdk` die verfügbaren Pakete prüfen und ein OpenJDK-Paket mit `keytool` installieren.
 
 **Alternativ über GitHub im Browser:** Den Base64-Inhalt von `base64 -w0 ~/.android/gameforge-debug.keystore` als neuen Repository-Secret-Wert unter **Settings → Secrets and variables → Actions → New repository secret** hinterlegen. Den vollständigen Base64-Text **nicht** hier in den Chat einfügen.
 
