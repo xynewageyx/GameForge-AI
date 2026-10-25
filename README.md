@@ -111,6 +111,17 @@ Der Token wird weder in eine Datei geschrieben noch im Repository hinterlegt; di
 
 Der Builds-Reiter startet derzeit **nur** den GameForge-AI-Android-Workflow, nicht die Build-Workflows von Titan Legends. Die Funktion muss noch auf einem Android-Gerät mit gültigen Actions-Schreibrechten getestet werden.
 
+## KI-Verbindungstest in GameForge AI
+
+Im Reiter **KI-Chat** gibt es die Schaltfläche **„OmniRoute / Gemini Verbindung testen“**. Sie ruft **nur den Modellkatalog** ab – keine Chatnachricht, keine Editor-Datei und keinen Analyseauftrag. Die Verbindungsprüfung testet daher **nicht**, ob das ausgewählte Chatmodell tatsächlich eine Antwort erzeugen kann.
+
+- **OmniRoute in Termux**: `npx -y omniroute` starten und in GameForge AI „OmniRoute“ auswählen. Die App prüft ausschließlich `http://127.0.0.1:20128/v1/models`. Bei Verbindungsfehlern sicherstellen, dass der lokale Server läuft und seine API erreichbar ist. Als Chatmodell im Feld den tatsächlich von OmniRoute unterstützten Modellnamen verwenden.
+- **Gemini direkt**: Anbieter „Gemini API“ auswählen, einen API-Key in das geschützte Eingabefeld einfügen und den Verbindungstest starten. Die App prüft `https://generativelanguage.googleapis.com/v1beta/models`, überträgt den Schlüssel ausschließlich im HTTP-Header und speichert ihn nicht dauerhaft.
+
+**Ergebnisse**: HTTP 401/403 deutet auf Authentifizierung/Berechtigung, HTTP 404 auf einen nicht gefundenen Endpunkt und Netzwerkfehler auf fehlende Erreichbarkeit hin. Bei HTTP 200 werden die Anzahl und höchstens drei Modellnamen als Hilfestellung angezeigt. **„Erreichbar“ bedeutet nicht, dass kostenloses Modellkontingent verfügbar ist.**
+
+Nach erfolgreicher Diagnose kann eine **kurze, unkritische Testnachricht** gesendet werden, beispielsweise „Antworte mit OK“. Bei fehlgeschlagenem Test keine Geheimnisse in Screenshots oder in diesen Chat kopieren.
+
 ## KI-Chat: OmniRoute oder Gemini
 
 Unter **KI-Chat** können zwei Anbindungen gewählt werden. Beide erzeugen nur **Antworten und Codevorschläge**. Die App führt KI-Antworten nicht automatisch aus und verändert weder Projektdateien noch GitHub ohne einen separaten Bedienvorgang.
