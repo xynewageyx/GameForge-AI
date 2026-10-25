@@ -9,7 +9,33 @@ GameForge AI ist ein Godot-4.7.2-Projekt für Android. Der Quellcode wird über 
 3. Unter **Artifacts** `GameForgeAI-debug-APK` herunterladen.
 4. ZIP entpacken, `GameForgeAI.apk` installieren.
 
-**Achtung:** Die CI erzeugt aktuell pro Build einen neuen Debug-Keystore. Android kann deshalb Updates mit abweichender Signatur ablehnen. Eine Deinstallation der vorherigen Version kann erforderlich sein und löscht lokale App-Daten. Vorher lokale Dateien sichern. Dauerhafte Signierung ist noch nicht eingerichtet.
+**Achtung:** Die CI unterstützt inzwischen eine **dauerhafte Debug-Signatur über das Repository Secret** `GAMEFORGE_DEBUG_KEYSTORE_BASE64`. Solange dieses Secret fehlt, erzeugt der Workflow weiterhin einen neuen temporären Keystore pro Build. Bei abweichender Signatur kann Android ein Update verweigern. Eine Deinstallation löscht lokale App-Daten; vorher wichtige Dateien sichern. Anleitung unter **Dauerhafte Debug-Signatur** weiter unten.
+
+## Dauerhafte Debug-Signatur für APK-Updates (einmalig auf Android)
+
+Der Android-Workflow kann dieselbe Debug-Signatur in jedem Build verwenden. Dafür muss das **GitHub Actions Repository Secret** `GAMEFORGE_DEBUG_KEYSTORE_BASE64` einmalig eingerichtet werden. Der geheime Keystore wird **nicht** in Git getrackt, ist **nicht** in der APK enthalten und wird in GitHub Actions erst während des Builds entschlüsselt. **Base64 ist keine Verschlüsselung**; den erzeugten Text ausschließlich in GitHub Secrets speichern und niemals in Issues, Commits, Chats oder Screenshots veröffentlichen.
+
+**Einrichtung in Termux auf dem Android-Handy:**
+
+```bash
+pkg update
+pkg install openjdk-17 gh
+mkdir -p ~/.android
+keytool -genkeypair -keystore ~/.android/gameforge-debug.keystore \
+  -storepass android -alias androiddebugkey -keypass android \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -dname "CN=GameForge AI Debug,O=GameForge AI,C=DE" -noprompt
+gh auth login
+base64 -w0 ~/.android/gameforge-debug.keystore | gh secret set GAMEFORGE_DEBUG_KEYSTORE_BASE64 -R xynewageyx/GameForge-AI
+```
+
+Die Befehle erzeugen bewusst nur einen **Debug-Schlüssel** mit dem üblichen Android-Debug-Passwort. Er ist **nicht für eine öffentliche Release-Version/Play-Store-Publikation** geeignet. Der GitHub-CLI-Login erfolgt über das eigene GitHub-Konto. Falls Termux `openjdk-17` nicht anbietet, ein verfügbares OpenJDK-Paket mit `keytool` verwenden.
+
+**Alternativ über GitHub im Browser:** Den Base64-Inhalt von `base64 -w0 ~/.android/gameforge-debug.keystore` als neuen Repository-Secret-Wert unter **Settings → Secrets and variables → Actions → New repository secret** hinterlegen. Den vollständigen Base64-Text **nicht** hier in den Chat einfügen.
+
+Danach den Workflow **Android debug APK** erneut starten. In der Build-Zusammenfassung muss `persistent keystore from GitHub Actions secret` stehen; der im Log angezeigte Zertifikatsfingerabdruck (SHA256) sollte in allen weiteren Builds identisch sein. Die Android-`versionCode` wird automatisch aus der GitHub-Actions-Laufnummer abgeleitet.
+
+**Wichtige Einschränkungen:** Ohne das Secret läuft der Build weiterhin, aber mit einem **neuen temporären Debug-Schlüssel**, der nicht für normale App-Updates taugt; GitHub Actions zeigt eine Warnung. Auch die **erste** APK mit dem neu eingerichteten dauerhaften Schlüssel hat eine andere Signatur als die zuvor zufällig signierten Versionen. Eine **einmalige** Deinstallation kann daher notwendig sein. Vorher unbedingt alle wichtigen lokalen Dateien und Auto-Sicherungen außerhalb der App sichern. Spätere Builds mit **demselben** Secret können bei unveränderter Paketkennung in der Regel als Updates installiert werden. Den Keystore zusätzlich sicher außerhalb von GitHub sichern: Geht er verloren, sind zukünftige signaturgleiche Updates nicht mehr möglich.
 
 ## Automatische Sicherung im Code-Editor
 
