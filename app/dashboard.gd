@@ -54,6 +54,8 @@ var ai_key_input: LineEdit
 var ai_chat_log: TextEdit
 var ai_message_input: TextEdit
 var ai_send_button: Button
+var ai_diagnostic_button: Button
+var ai_diagnostic_label: Label
 var ai_history: Array = []
 var ai_display_text: String = ""
 var ai_pending_prompt: String = ""
@@ -98,6 +100,7 @@ func _ready() -> void:
     ai_service = preload("res://app/ai_chat_service.gd").new()
     add_child(ai_service)
     ai_service.connect("answered", Callable(self, "_on_ai_answered"))
+    ai_service.connect("diagnosed", Callable(self, "_on_ai_diagnosed"))
     _build_ui()
 
 func _build_ui() -> void:
@@ -226,6 +229,7 @@ func _select_tab(tab: String) -> void:
         _remember_analysis_editor()
         _remember_ai_draft()
     if selected_tab == "KI-Chat" and tab != selected_tab:
+        ai_service.call("cancel_diagnosis")
         _cancel_ai_request()
         _clear_ai_key()
     _cancel_build_confirmation()
@@ -270,6 +274,7 @@ func _select_project(name: String) -> void:
         pending_analysis.clear()
         analysis_source_snapshot.clear()
         _cancel_ai_request()
+        ai_service.call("cancel_diagnosis")
         _clear_ai_key()
         ai_history.clear()
         ai_display_text = ""
@@ -793,6 +798,11 @@ func _cancel_ai_request() -> void:
         ai_display_text += "\n[Anfrage abgebrochen]\n"
 
 func _on_ai_provider_selected(index: int) -> void:
+    ai_service.call("cancel_diagnosis")
+    if ai_diagnostic_button != null and is_instance_valid(ai_diagnostic_button):
+        ai_diagnostic_button.disabled = false
+    if ai_diagnostic_label != null and is_instance_valid(ai_diagnostic_label):
+        ai_diagnostic_label.text = "Verbindung noch nicht geprüft."
     ai_active_provider = "omniroute" if index == 0 else "gemini"
     ai_selected_model = "auto/coding" if index == 0 else "gemini-2.5-flash"
     if ai_model_input != null and is_instance_valid(ai_model_input):
@@ -808,6 +818,35 @@ func _update_ai_key_hint() -> void:
         ai_key_input.placeholder_text = "Gemini API-Key (nur im Arbeitsspeicher)"
     else:
         ai_key_input.placeholder_text = "OmniRoute Endpoint-Key (falls erforderlich, sonst leer)"
+
+func _test_ai_connection() -> void:
+    if selected_tab != "KI-Chat" or ai_key_input == null or not is_instance_valid(ai_key_input):
+        return
+    if ai_service.call("is_busy") or ai_service.call("is_diagnosing"):
+        status.text = "Bitte laufende KI-Anfrage zuerst abschließen."
+        return
+    var key := ai_key_input.text.strip_edges()
+    if ai_active_provider == "gemini" and key.is_empty():
+        status.text = "Für den Gemini-Verbindungstest ist ein API-Schlüssel erforderlich."
+        if ai_diagnostic_label != null and is_instance_valid(ai_diagnostic_label):
+            ai_diagnostic_label.text = "Kein Gemini API-Schlüssel eingegeben."
+        return
+    var err: int = ai_service.call("diagnose", ai_active_provider, key)
+    if err != OK:
+        status.text = "Verbindungstest konnte nicht starten (" + str(err) + ")."
+        return
+    ai_diagnostic_button.disabled = true
+    ai_diagnostic_label.text = "Prüfe Modell-Endpunkt (ohne Nachricht oder Projektdatei)..."
+    status.text = "KI-Verbindungstest läuft..."
+
+func _on_ai_diagnosed(success: bool, details: String) -> void:
+    if selected_tab != "KI-Chat":
+        return
+    if ai_diagnostic_button != null and is_instance_valid(ai_diagnostic_button):
+        ai_diagnostic_button.disabled = false
+    if ai_diagnostic_label != null and is_instance_valid(ai_diagnostic_label):
+        ai_diagnostic_label.text = details
+    status.text = "KI-Endpunkt erreichbar (Chat ungetestet)." if success else "KI-Verbindungstest fehlgeschlagen."
 
 func _send_ai_message() -> void:
     if ai_message_input == null or not is_instance_valid(ai_message_input):
@@ -1282,6 +1321,18 @@ func _render_tab() -> void:
             ai_key_input.custom_minimum_size.y = 64
             content.add_child(ai_key_input)
             _update_ai_key_hint()
+            _add_label("Verbindung prüfen – ohne Chatnachricht oder Projektcode", 18)
+            ai_diagnostic_button = Button.new()
+            ai_diagnostic_button.text = "OmniRoute / Gemini Verbindung testen"
+            ai_diagnostic_button.custom_minimum_size.y = 72
+            ai_diagnostic_button.disabled = ai_service.call("is_busy") or ai_service.call("is_diagnosing")
+            ai_diagnostic_button.pressed.connect(_test_ai_connection)
+            content.add_child(ai_diagnostic_button)
+            ai_diagnostic_label = Label.new()
+            ai_diagnostic_label.text = "Verbindung noch nicht geprüft. Test ruft nur die Modellliste ab."
+            ai_diagnostic_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+            ai_diagnostic_label.add_theme_font_size_override("font_size", 18)
+            content.add_child(ai_diagnostic_label)
             ai_chat_log = TextEdit.new()
             ai_chat_log.custom_minimum_size.y = 360
             ai_chat_log.size_flags_horizontal = Control.SIZE_EXPAND_FILL
