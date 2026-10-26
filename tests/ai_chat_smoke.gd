@@ -621,6 +621,33 @@ func _run_tests() -> void:
         return
     dashboard.last_review_repo = ""
     dashboard.last_review_branch = ""
+    # Nur echte GitHub-Contents-Antworten mit passender Datei und Commit-SHA bestätigen.
+    var valid_upload := {"content": {"path": "scripts/fighter.gd", "sha": "newfilesha"}, "commit": {"sha": "newcommitsha"}}
+    if not dashboard._is_confirmed_review_upload_response(valid_upload, "scripts/fighter.gd"):
+        _fail("Matching GitHub file and commit must be recognized")
+        return
+    if dashboard._is_confirmed_review_upload_response(valid_upload, "scripts/other.gd"):
+        _fail("A different file path must not count as a confirmed GitHub commit")
+        return
+    if dashboard._is_confirmed_review_upload_response({"content": {"path": "scripts/fighter.gd", "sha": "file"}}, "scripts/fighter.gd"):
+        _fail("Missing GitHub commit SHA must not count as success")
+        return
+    dashboard.prepared_repo = "xynewageyx/GameForge-AI"
+    dashboard.prepared_path = "scripts/fighter.gd"
+    dashboard.prepared_branch = "gameforge/review-response-test"
+    dashboard.upload_state = "upload"
+    dashboard.last_review_commit_confirmed = false
+    var wrong_file_response := JSON.stringify({"content": {"path": "scripts/other.gd", "sha": "file"}, "commit": {"sha": "commit"}})
+    dashboard._github_upload_response(HTTPRequest.RESULT_SUCCESS, 200, PackedStringArray(), wrong_file_response.to_utf8_buffer())
+    if dashboard.upload_state != "" or dashboard.last_review_commit_confirmed:
+        _fail("Mismatched GitHub upload result must remain unconfirmed")
+        return
+    if not dashboard.upload_preview_label.text.contains("gameforge/review-response-test"):
+        _fail("Mismatched GitHub upload response should preserve branch recovery information")
+        return
+    dashboard.prepared_repo = ""
+    dashboard.prepared_path = ""
+    dashboard.prepared_branch = ""
     # GitHub-Sicherheit: Upload ausschließlich auf Review-Branch, main darf unberührt bleiben.
     dashboard._select_tab("Code")
     if not dashboard.has_method("_github_send_branch_file"):
