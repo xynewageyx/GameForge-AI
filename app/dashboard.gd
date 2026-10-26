@@ -87,6 +87,7 @@ var review_candidate_target_path: String = ""
 var review_candidate_target_sha: String = ""
 var review_candidate_ready: bool = false
 var review_candidate_label: Label
+var review_candidate_diff_preview: TextEdit
 var review_candidate_apply_button: Button
 var project_names: Array[String] = ["GameForge AI", "Titan Legends", "MangaForge AI"]
 var file_names: Array[String] = ["main.gd", "notes.txt"]
@@ -442,6 +443,8 @@ func _show_review_candidate_message(message: String) -> void:
         review_candidate_label.text = message
     if review_candidate_apply_button != null and is_instance_valid(review_candidate_apply_button):
         review_candidate_apply_button.disabled = not review_candidate_ready
+    if not review_candidate_ready and review_candidate_diff_preview != null and is_instance_valid(review_candidate_diff_preview):
+        review_candidate_diff_preview.text = "Keine freigegebene KI-Codevorschau. Zuerst einen Vorschlag gegen die GitHub-Datei prüfen."
 
 func _preview_ai_review_candidate() -> void:
     review_candidate_ready = false
@@ -467,6 +470,8 @@ func _preview_ai_review_candidate() -> void:
     review_candidate_ready = true
     var changes: Dictionary = _review_change_summary(github_original_content, review_candidate_code)
     _show_review_candidate_message("VORSCHAU – GitHub-Datei " + github_loaded_path + " wird nur im EDITOR durch den vorgemerkten Vorschlag ersetzt. " + str(changes["changed"]) + " Zeilen ungefähr geändert, " + str(changes["added"]) + " hinzugefügt, " + str(changes["removed"]) + " entfernt. Der gespeicherte/ungespeicherte KI-Entwurf bleibt erhalten. GitHub wird NICHT verändert. Nur mit der nächsten Schaltfläche übernehmen.")
+    if review_candidate_diff_preview != null and is_instance_valid(review_candidate_diff_preview):
+        review_candidate_diff_preview.text = _review_local_diff_text(github_original_content, review_candidate_code)
     status.text = "KI-Code-Übernahme vorbereitet. Kein GitHub-Upload."
 
 func _apply_ai_review_candidate() -> void:
@@ -1867,6 +1872,13 @@ func _render_tab() -> void:
             review_candidate_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
             review_candidate_label.add_theme_font_size_override("font_size", 18)
             content.add_child(review_candidate_label)
+            review_candidate_diff_preview = TextEdit.new()
+            review_candidate_diff_preview.editable = false
+            review_candidate_diff_preview.custom_minimum_size.y = 260
+            review_candidate_diff_preview.add_theme_font_size_override("font_size", 17)
+            review_candidate_diff_preview.text = "Hier erscheinen alte (-) und vorgeschlagene (+) GDScript-Zeilen nach der Prüfung. Nur lokal, kein Upload."
+            content.add_child(review_candidate_diff_preview)
+            _configure_touch_text_area(review_candidate_diff_preview)
             review_candidate_apply_button = Button.new()
             review_candidate_apply_button.text = "KI-Vorschlag nur in Editor übernehmen (kein GitHub-Upload)"
             review_candidate_apply_button.custom_minimum_size.y = 68
