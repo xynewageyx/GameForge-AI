@@ -540,6 +540,28 @@ func _open_last_review_branch() -> void:
         return
     OS.shell_open("https://github.com/" + last_review_repo + "/compare/main..." + last_review_branch)
 
+## Safe line-count overview, not a full semantic diff; never displays source or credentials.
+func _review_change_summary(before_text: String, after_text: String) -> Dictionary:
+    var before_lines := before_text.split("\n")
+    var after_lines := after_text.split("\n")
+    var prefix := 0
+    while prefix < before_lines.size() and prefix < after_lines.size() and before_lines[prefix] == after_lines[prefix]:
+        prefix += 1
+    var suffix := 0
+    var before_rest := before_lines.size() - prefix
+    var after_rest := after_lines.size() - prefix
+    while suffix < before_rest and suffix < after_rest and before_lines[before_lines.size() - suffix - 1] == after_lines[after_lines.size() - suffix - 1]:
+        suffix += 1
+    var removed_segment := before_lines.size() - prefix - suffix
+    var added_segment := after_lines.size() - prefix - suffix
+    var changed := mini(removed_segment, added_segment)
+    return {
+        "changed": changed,
+        "added": maxi(0, added_segment - changed),
+        "removed": maxi(0, removed_segment - changed),
+        "start": prefix + 1
+    }
+
 func _prepare_github_upload() -> void:
     if upload_state != "":
         status.text = "Es läuft bereits eine GitHub-Anfrage."
@@ -691,7 +713,8 @@ func _github_upload_response(result: int, code: int, _headers: PackedStringArray
             return
         upload_state = "ready"
         upload_confirm_button.disabled = false
-        upload_preview_label.text = "Bereit zum Hochladen:\nRepository: " + prepared_repo + "\nDatei: " + prepared_path + "\nGitHub-Version: " + prepared_sha.substr(0, 12) + "\nGröße: " + str(prepared_content.to_utf8_buffer().size()) + " Bytes\nBeim Bestätigen wird nur ein neuer Review-Branch angelegt, nicht main."
+        var overview: Dictionary = _review_change_summary(github_original_content, prepared_content)
+        upload_preview_label.text = "Bereit für Review-Branch:\nRepository: " + prepared_repo + "\nDatei: " + prepared_path + "\nGeprüfter Datei-Hash: " + prepared_sha.substr(0, 12) + "\nGröße: " + str(prepared_content.to_utf8_buffer().size()) + " Bytes\nZeilenübersicht (grobe Schätzung): " + str(overview["changed"]) + " geändert, " + str(overview["added"]) + " hinzugefügt, " + str(overview["removed"]) + " entfernt, ab Zeile " + str(overview["start"]) + ".\nErst nach der separaten Bestätigung wird ein Review-Branch erstellt. main bleibt unverändert."
         status.text = "Dateiversion geprüft. Bestätigung erforderlich."
         return
     upload_state = ""
