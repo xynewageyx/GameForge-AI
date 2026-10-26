@@ -445,6 +445,22 @@ func _run_tests() -> void:
         return
     dashboard._scroll_text_page(dashboard.ai_chat_log, 1)
     dashboard._scroll_text_page(dashboard.ai_chat_log, -1)
+    var review_same: Dictionary = dashboard._review_change_summary("a\nb\nc", "a\nb\nc")
+    if int(review_same.get("changed", -1)) != 0 or int(review_same.get("added", -1)) != 0 or int(review_same.get("removed", -1)) != 0:
+        _fail("Unchanged file should have zero review changes")
+        return
+    var review_edit: Dictionary = dashboard._review_change_summary("a\nb\nc", "a\nB\nc")
+    if int(review_edit.get("changed", -1)) != 1 or int(review_edit.get("start", -1)) != 2:
+        _fail("Single-line edit should be detected correctly")
+        return
+    var review_insert: Dictionary = dashboard._review_change_summary("a\nb\nc", "a\nnew\nb\nc")
+    if int(review_insert.get("added", -1)) != 1 or int(review_insert.get("changed", -1)) != 0:
+        _fail("Inserted line should be counted as added")
+        return
+    var review_remove: Dictionary = dashboard._review_change_summary("a\nold\nb", "a\nb")
+    if int(review_remove.get("removed", -1)) != 1 or int(review_remove.get("changed", -1)) != 0:
+        _fail("Removed line should be counted as removed")
+        return
     # GitHub-Sicherheit: Upload ausschließlich auf Review-Branch, main darf unberührt bleiben.
     dashboard._select_tab("Code")
     if not dashboard.has_method("_github_send_branch_file"):
