@@ -41,6 +41,8 @@ var prepared_content: String = ""
 var prepared_path: String = ""
 var prepared_repo: String = ""
 var prepared_sha: String = ""
+var prepared_branch: String = ""
+var prepared_commit_message: String = ""
 var build_status_request: HTTPRequest
 var build_trigger_request: HTTPRequest
 var build_token_input: LineEdit
@@ -511,15 +513,17 @@ func _github_response(result: int, code: int, _headers: PackedStringArray, body:
     status.text = "GitHub-Datei geladen: " + github_loaded_path + " (nur lesen)"
 
 func _cancel_pending_upload() -> void:
-    if upload_state == "upload":
+    if upload_state == "upload" or upload_state == "branch_create":
         return
-    if upload_state == "preflight":
+    if upload_state == "preflight" or upload_state == "branch_base":
         upload_request.cancel_request()
     upload_state = ""
     prepared_content = ""
     prepared_path = ""
     prepared_repo = ""
     prepared_sha = ""
+    prepared_branch = ""
+    prepared_commit_message = ""
     if upload_confirm_button != null and is_instance_valid(upload_confirm_button):
         upload_confirm_button.disabled = true
     if upload_preview_label != null and is_instance_valid(upload_preview_label):
@@ -590,26 +594,41 @@ func _confirm_github_upload() -> void:
         _cancel_pending_upload()
         status.text = "Commit-Nachricht zu lang (maximal 200 Zeichen)."
         return
+    prepared_commit_message = message
+    prepared_branch = "gameforge/review-" + Time.get_datetime_string_from_system(true).replace("-", "").replace(":", "").replace("T", "-") + "-" + str(Time.get_ticks_msec() % 100000)
+    upload_state = "branch_base"
+    upload_confirm_button.disabled = true
+    upload_preview_label.text = "Erstelle Review-Branch " + prepared_branch + ". Der Hauptbranch bleibt unverändert."
+    var headers := ["Accept: application/vnd.github+json", "User-Agent: GameForgeAI", "Authorization: Bearer " + token]
+    var err := upload_request.request("https://api.github.com/repos/" + prepared_repo + "/git/ref/heads/main", headers)
+    if err != OK:
+        upload_state = ""
+        status.text = "Branch-Prüfung fehlgeschlagen: " + str(err)
+        upload_preview_label.text = "Kein Commit erstellt."
+        return
+    status.text = "Lade Basis-Commit für neuen Review-Branch..."
+
+func _github_send_branch_file() -> void:
+    var token := upload_token_input.text.strip_edges()
     var payload := JSON.stringify({
-        "message": message,
+        "message": prepared_commit_message,
         "content": Marshalls.raw_to_base64(prepared_content.to_utf8_buffer()),
-        "sha": prepared_sha
+        "sha": prepared_sha,
+        "branch": prepared_branch
     })
     var headers := ["Accept: application/vnd.github+json", "Content-Type: application/json", "User-Agent: GameForgeAI", "Authorization: Bearer " + token]
     upload_state = "upload"
-    upload_confirm_button.disabled = true
-    upload_preview_label.text = "Sende bestätigte Änderung. App nicht schließen."
     var err := upload_request.request(_github_upload_url(prepared_repo, prepared_path), headers, HTTPClient.METHOD_PUT, payload)
     if err != OK:
         upload_state = ""
-        status.text = "Upload-Anfrage fehlgeschlagen: " + str(err)
-        upload_preview_label.text = "Nicht gesendet. Erneut prüfen."
+        status.text = "Review-Branch erstellt, Datei-Upload konnte nicht starten (" + str(err) + ")."
+        upload_preview_label.text = "Kein Datei-Commit bestätigt. GitHub-Branch prüfen."
         return
-    status.text = "Übertrage Änderung nach GitHub..."
+    status.text = "Übertrage Änderung in Review-Branch " + prepared_branch + "..."
 
 func _github_upload_response(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
     var stage := upload_state
-    if stage != "preflight" and stage != "upload":
+    if stage != "preflight" and stage != "branch_base" and stage != "branch_create" and stage != "upload":
         return
     if result != HTTPRequest.RESULT_SUCCESS:
         upload_state = ""
@@ -618,6 +637,40 @@ func _github_upload_response(result: int, code: int, _headers: PackedStringArray
             upload_preview_label.text = "Anfrage nicht bestätigt."
         return
     var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+    if stage == "branch_base":
+        if code != 200 or not data is Dictionary:
+            upload_state = ""
+            status.text = "Basis-Branch konnte nicht geprüft werden (HTTP " + str(code) + ")."
+            upload_preview_label.text = "Kein Branch erstellt."
+            return
+        var object: Variant = data.get("object", {})
+        if not object is Dictionary or str(object.get("sha", "")).is_empty():
+            upload_state = ""
+            status.text = "Basis-Commit fehlt. Kein Branch erstellt."
+            return
+        var token := upload_token_input.text.strip_edges()
+        var payload := JSON.stringify({"ref": "refs/heads/" + prepared_branch, "sha": str(object.get("sha", ""))})
+        var headers := ["Accept: application/vnd.github+json", "Content-Type: application/json", "User-Agent: GameForgeAI", "Authorization: Bearer " + token]
+        upload_state = "branch_create"
+        var err := upload_request.request("https://api.github.com/repos/" + prepared_repo + "/git/refs", headers, HTTPClient.METHOD_POST, payload)
+        if err != OK:
+            upload_state = ""
+            status.text = "Review-Branch konnte nicht erstellt werden (" + str(err) + ")."
+            return
+        status.text = "Erstelle Review-Branch auf GitHub..."
+        return
+    if stage == "branch_create":
+        if code != 201 or not data is Dictionary:
+            upload_state = ""
+            status.text = "GitHub-Branch konnte nicht erstellt werden (HTTP " + str(code) + "). Rechte Contents: write prüfen."
+            upload_preview_label.text = "Kein Datei-Commit erstellt."
+            return
+        if str(data.get("ref", "")) != "refs/heads/" + prepared_branch:
+            upload_state = ""
+            status.text = "Branch-Antwort weicht ab. Kein Datei-Upload gestartet."
+            return
+        _github_send_branch_file()
+        return
     if stage == "preflight":
         if code != 200 or not data is Dictionary:
             _cancel_pending_upload()
@@ -630,7 +683,7 @@ func _github_upload_response(result: int, code: int, _headers: PackedStringArray
             return
         upload_state = "ready"
         upload_confirm_button.disabled = false
-        upload_preview_label.text = "Bereit zum Hochladen:\nRepository: " + prepared_repo + "\nDatei: " + prepared_path + "\nGitHub-Version: " + prepared_sha.substr(0, 12) + "\nGröße: " + str(prepared_content.to_utf8_buffer().size()) + " Bytes\nErst mit 'Hochladen verbindlich bestätigen' wird ein Commit erstellt."
+        upload_preview_label.text = "Bereit zum Hochladen:\nRepository: " + prepared_repo + "\nDatei: " + prepared_path + "\nGitHub-Version: " + prepared_sha.substr(0, 12) + "\nGröße: " + str(prepared_content.to_utf8_buffer().size()) + " Bytes\nBeim Bestätigen wird nur ein neuer Review-Branch angelegt, nicht main."
         status.text = "Dateiversion geprüft. Bestätigung erforderlich."
         return
     upload_state = ""
@@ -658,15 +711,12 @@ func _github_upload_response(result: int, code: int, _headers: PackedStringArray
     if new_sha.is_empty():
         status.text = "Neuer Datei-Hash fehlt. Commit bei GitHub prüfen."
         return
-    if github_loaded_repo == prepared_repo and github_loaded_path == prepared_path and loaded_source == "github":
-        github_loaded_sha = new_sha
-        github_original_content = prepared_content
-        _set_current_file("GitHub: " + github_loaded_path + " (hochgeladen)")
+    # Der Editor bleibt auf main bezogen; kein stiller Wechsel der geladenen Dateiversion.
     if upload_token_input != null and is_instance_valid(upload_token_input):
         upload_token_input.clear()
     if upload_preview_label != null and is_instance_valid(upload_preview_label):
-        upload_preview_label.text = "Erfolgreich! GitHub-Datei aktualisiert. Token-Eingabe geleert."
-    status.text = "GitHub-Commit erfolgreich: " + prepared_path
+        upload_preview_label.text = "Review-Branch erfolgreich: " + prepared_branch + "\nmain wurde nicht verändert. Auf GitHub Änderungen vergleichen und Pull Request eröffnen. Token-Eingabe geleert."
+    status.text = "Review-Commit erfolgreich: " + prepared_branch + " (main unverändert)"
 
 func _cancel_build_confirmation() -> void:
     build_ready = false
@@ -1663,12 +1713,12 @@ func _render_tab() -> void:
             upload_preview_label.add_theme_font_size_override("font_size", 19)
             content.add_child(upload_preview_label)
             upload_confirm_button = Button.new()
-            upload_confirm_button.text = "Hochladen verbindlich bestätigen"
+            upload_confirm_button.text = "Review-Branch erstellen und Änderung hochladen"
             upload_confirm_button.custom_minimum_size.y = 64
             upload_confirm_button.disabled = true
             upload_confirm_button.pressed.connect(_confirm_github_upload)
             content.add_child(upload_confirm_button)
-            _add_label("Token nicht speichern oder im Chat teilen. GitHub-Zugriff: Contents (read/write) nur für das gewählte Repository.", 17)
+            _add_label("Es wird ein neuer gameforge/review-Branch erzeugt. main bleibt unverändert. Für den Datei-Commit ist Contents: write erforderlich; Pull Request später auf GitHub prüfen. Token nicht speichern oder teilen.", 17)
             github_list = VBoxContainer.new()
             github_list.add_theme_constant_override("separation", 8)
             content.add_child(github_list)
