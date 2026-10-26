@@ -290,6 +290,36 @@ func _run_tests() -> void:
         _fail("Touch scroll deadzone too large")
         return
     dashboard._select_tab("Code")
+    if not dashboard.editor is CodeEdit:
+        _fail("Android code editor must be a CodeEdit for line numbers")
+        return
+    var code_edit: CodeEdit = dashboard.editor as CodeEdit
+    if not code_edit.gutters_draw_line_numbers:
+        _fail("Line-number gutter must be visible")
+        return
+    if not code_edit.indent_automatic or not code_edit.auto_brace_completion_enabled:
+        _fail("GDScript editor indent and bracket assistance must be enabled")
+        return
+    if code_edit.syntax_highlighter == null:
+        _fail("main.gd must have syntax highlighting")
+        return
+    if not code_edit.syntax_highlighter is CodeHighlighter:
+        _fail("GDScript highlighting resource must use CodeHighlighter")
+        return
+    var syntax: CodeHighlighter = code_edit.syntax_highlighter as CodeHighlighter
+    if not syntax.has_keyword_color("func") or not syntax.has_color_region("#"):
+        _fail("GDScript keywords and comments are missing their highlighting")
+        return
+    dashboard.loaded_local_path = "notes.txt"
+    dashboard._refresh_code_syntax()
+    if dashboard.editor.syntax_highlighter != null:
+        _fail("Plain text must not receive GDScript highlighting")
+        return
+    dashboard.loaded_local_path = "main.gd"
+    dashboard._refresh_code_syntax()
+    if dashboard.editor.syntax_highlighter == null:
+        _fail("Switching back to GDScript must restore highlighting")
+        return
     if dashboard.editor.get_v_scroll_bar().custom_minimum_size.x < 44.0:
         _fail("Code editor scrollbar is too narrow for touch")
         return
