@@ -36,6 +36,7 @@ var upload_token_input: LineEdit
 var upload_message_input: LineEdit
 var upload_confirm_button: Button
 var upload_preview_label: Label
+var github_diff_preview: TextEdit
 var upload_state: String = ""
 var prepared_content: String = ""
 var prepared_path: String = ""
@@ -561,6 +562,45 @@ func _review_change_summary(before_text: String, after_text: String) -> Dictiona
         "removed": maxi(0, removed_segment - changed),
         "start": prefix + 1
     }
+
+## Vorschau nur auf dem Gerät; zeigt einen begrenzten Ausschnitt, kein Netzwerkverkehr.
+func _review_local_diff_text(before_text: String, after_text: String) -> String:
+    if before_text == after_text:
+        return "Keine Änderungen gegenüber der geladenen GitHub-Datei."
+    var old_lines := before_text.split("\n")
+    var new_lines := after_text.split("\n")
+    var stats: Dictionary = _review_change_summary(before_text, after_text)
+    var start: int = maxi(0, int(stats.get("start", 1)) - 1)
+    var old_changed: int = int(stats.get("changed", 0)) + int(stats.get("removed", 0))
+    var new_changed: int = int(stats.get("changed", 0)) + int(stats.get("added", 0))
+    var result := "LOKALE VORSCHAU – kein Upload\nDatei: " + github_loaded_path + "\n"
+    result += "Änderungsblock ab Zeile " + str(start + 1) + " (nicht vollständiger Git-Diff).\n"
+    result += "Alte Zeilen (-):\n"
+    var old_limit: int = mini(start + old_changed, start + 20)
+    for n in range(start, old_limit):
+        if n < old_lines.size():
+            result += "- " + str(n + 1) + "  " + old_lines[n].substr(0, 220) + "\n"
+    if old_changed > 20:
+        result += "... weitere alte Zeilen ausgeblendet\n"
+    result += "Neue Zeilen (+):\n"
+    var new_limit: int = mini(start + new_changed, start + 20)
+    for n in range(start, new_limit):
+        if n < new_lines.size():
+            result += "+ " + str(n + 1) + "  " + new_lines[n].substr(0, 220) + "\n"
+    if new_changed > 20:
+        result += "... weitere neue Zeilen ausgeblendet\n"
+    return result
+
+func _show_local_github_diff() -> void:
+    if selected_tab != "Code" or editor == null or not is_instance_valid(editor):
+        return
+    if github_diff_preview == null or not is_instance_valid(github_diff_preview):
+        return
+    if loaded_source != "github" or github_loaded_path.is_empty():
+        github_diff_preview.text = "Bitte zuerst eine GitHub-Datei laden und bearbeiten."
+        return
+    github_diff_preview.text = _review_local_diff_text(github_original_content, editor.text)
+    status.text = "Änderungen lokal angezeigt. Kein GitHub-Upload gestartet."
 
 func _prepare_github_upload() -> void:
     if upload_state != "":
@@ -1740,6 +1780,14 @@ func _render_tab() -> void:
             upload_message_input.placeholder_text = "Commit-Nachricht (optional)"
             upload_message_input.custom_minimum_size.y = 62
             content.add_child(upload_message_input)
+            _add_button("Änderungen lokal vergleichen (kein Upload)", _show_local_github_diff)
+            github_diff_preview = TextEdit.new()
+            github_diff_preview.editable = false
+            github_diff_preview.custom_minimum_size.y = 240
+            github_diff_preview.add_theme_font_size_override("font_size", 17)
+            github_diff_preview.text = "Nur lokale Vorschau: zeigt bis zu 20 alte und 20 neue Zeilen je zusammenhängendem Änderungsbereich."
+            content.add_child(github_diff_preview)
+            _configure_touch_text_area(github_diff_preview)
             _add_button("Änderung prüfen", _prepare_github_upload)
             upload_preview_label = Label.new()
             upload_preview_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
