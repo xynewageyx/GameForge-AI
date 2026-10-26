@@ -204,6 +204,12 @@ Die neue KI-Integration muss noch auf Android in beiden Modi praktisch getestet 
 
 **Wichtig:** Die Originaldatei wird durch die Analyse niemals automatisch überschrieben. GitHub-Commits erfolgen nur separat über die vorhandene bestätigte Upload-Funktion. Die KI führt vorgeschlagenen Code nicht aus. Die Quelldatei wird nicht automatisch im Chatverlauf für Folgeanfragen erneut übertragen. Der Analyseauftrag ist auf 10.000 Zeichen Quellcode und maximal 900 Zeichen Änderungswunsch begrenzt; bei längeren Dateien muss zunächst ein relevanter Ausschnitt im Editor vorbereitet werden. Die Übertragung an den KI-Anbieter kann je nach Modell Kosten verursachen. Die neue Funktion muss noch in der Android-App getestet werden.
 
+## Schnelle GDScript-Übernahme aus dem KI-Chat
+
+Nach einer erfolgreichen Chat-Antwort erkennt GameForge AI einen vollständigen `gdscript`-Codeblock. Direkt unter **„Nachricht an KI senden“** stehen dann **„GDScript aus letzter KI-Antwort als Entwurf öffnen“** und eine Anzeige der erkannten Zeilenanzahl. Bei Antworten ohne passenden Codeblock bleibt die Schaltfläche deaktiviert. Die Übernahme öffnet den Code als **ungespeicherten Entwurf** im Editor; sie verändert weder die ursprüngliche Projektdatei noch das GitHub-Repository.
+
+Wenn im aktuellen Projekt schon ein ungespeicherter KI-Entwurf vorhanden ist, wird eine erneute Übernahme **blockiert**, damit dieser nicht versehentlich überschrieben wird. Erst über **„KI-Entwurf als neue Datei speichern“** eine eigene Kopie anlegen. Es erfolgt kein automatischer Commit und kein automatisches Ausführen des generierten Codes. Die automatische Prüfung deckt die neue Schaltfläche, das Erkennen von Codeblöcken und den Schutz vorhandener Entwürfe ab; die Bedienung auf Android wird separat geprüft.
+
 ## KI-Code in den lokalen Editor übernehmen
 
 Der KI-Chat kann GDScript aus einer KI-Antwort an den Code-Editor übergeben, ohne vorhandene Dateien zu überschreiben oder Code auszuführen.
