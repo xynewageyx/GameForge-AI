@@ -473,6 +473,58 @@ func _run_tests() -> void:
         _fail("Local diff must not trigger or suggest a GitHub upload")
         return
     dashboard.github_loaded_path = ""
+    # Ende-zu-Ende ohne Netzwerk: KI-Entwurf explizit vormerken, GitHub-Ziel prüfen, lokal übertragen.
+    dashboard._select_tab("Code")
+    dashboard.loaded_source = "ai_draft"
+    dashboard.ai_draft_project = dashboard.active_project
+    dashboard.ai_draft_code = "extends Node\nvar hp := 42\n"
+    dashboard.editor.text = dashboard.ai_draft_code
+    dashboard._stage_ai_code_for_review()
+    if dashboard.review_candidate_code != dashboard.editor.text or dashboard.review_candidate_apply_button.disabled == false:
+        _fail("Staging KI draft should not automatically enable apply")
+        return
+    var saved_ai_proposal: String = dashboard.review_candidate_code
+    dashboard.loaded_source = "github"
+    dashboard.github_loaded_repo = "xynewageyx/GameForge-AI"
+    dashboard.github_loaded_path = "scripts/fighter.gd"
+    dashboard.github_loaded_sha = "testsha123"
+    dashboard.github_original_content = "extends Node\nvar hp := 10\n"
+    dashboard.editor.text = "extends Node\nvar hp := 11\n"
+    dashboard._preview_ai_review_candidate()
+    if dashboard.review_candidate_ready:
+        _fail("Modified GitHub editor must block AI proposal application")
+        return
+    dashboard.editor.text = dashboard.github_original_content
+    dashboard._preview_ai_review_candidate()
+    if not dashboard.review_candidate_ready or dashboard.review_candidate_apply_button.disabled:
+        _fail("Clean existing GitHub GDScript should allow explicitly reviewed AI application")
+        return
+    dashboard.github_loaded_sha = "changedsha"
+    dashboard._apply_ai_review_candidate()
+    if dashboard.editor.text != dashboard.github_original_content:
+        _fail("Changed target SHA must not overwrite editor")
+        return
+    dashboard.github_loaded_sha = "testsha123"
+    dashboard._preview_ai_review_candidate()
+    dashboard._apply_ai_review_candidate()
+    if dashboard.editor.text != saved_ai_proposal or dashboard.upload_state != "":
+        _fail("Reviewed KI proposal must be local-only code edit")
+        return
+    if dashboard.review_candidate_code != saved_ai_proposal:
+        _fail("Applying KI proposal must preserve staged code")
+        return
+    dashboard._discard_ai_review_candidate()
+    if not dashboard.review_candidate_code.is_empty():
+        _fail("Explicit KI proposal discard must clear session staging")
+        return
+    dashboard.loaded_source = "local"
+    dashboard.loaded_local_path = "main.gd"
+    dashboard.github_loaded_repo = ""
+    dashboard.github_loaded_path = ""
+    dashboard.github_loaded_sha = ""
+    dashboard.github_original_content = ""
+    dashboard.ai_draft_code = ""
+    dashboard.ai_draft_project = ""
     # GitHub-Sicherheit: Upload ausschließlich auf Review-Branch, main darf unberührt bleiben.
     dashboard._select_tab("Code")
     if not dashboard.has_method("_github_send_branch_file"):
