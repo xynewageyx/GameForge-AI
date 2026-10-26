@@ -66,6 +66,12 @@ Die Oberfläche hat größere Scrollbalken (mindestens 46 Godot-UI-Pixel) und ei
 
 Bitte nach einem erfolgreichen GitHub-Actions-Build auf Android testen. Auf dem Handy ist das Scrollen mit dem Finger durch freie Bereiche der Seite ebenfalls möglich; innerhalb eines TextEditors scrollt man dessen Inhalt separat. Die tatsächliche Touch-Bedienbarkeit kann erst am Gerät vollständig bestätigt werden.
 
+## GDScript-Editor mit CodeEdit
+
+Die Code-Ansicht verwendet jetzt Godots `CodeEdit` statt eines einfachen Textfelds. Für `.gd`-Dateien gibt es **Zeilennummern, Syntaxhervorhebung** (Schlüsselwörter, Kommentare, Zahlen und Strings), automatische Einrückung und Klammerergänzung. Bei `.txt`-Dateien wird die GDScript-Farbgebung deaktiviert. Beim Wechsel zwischen lokalen Dateien, GitHub-Dateien und KI-Entwürfen wird die Hervorhebung aktualisiert.
+
+Die Funktionen verändern **weder Code noch Dateien von selbst**. Der bestehende lokale Speichern-/Auto-Sicherungsprozess und die separate GitHub-Uploadbestätigung bleiben bestehen. Die neuen Editorfunktionen werden in den Offline-CI-Tests überprüft; Touch-Tastatur, Eingabe und Scrollen müssen auf Android zusätzlich praktisch getestet werden.
+
 ## Projektverwaltung und Editor
 
 - Projekt im Bereich **Projekte** auswählen (GameForge AI oder Titan Legends).
