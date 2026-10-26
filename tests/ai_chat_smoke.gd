@@ -499,6 +499,9 @@ func _run_tests() -> void:
     if not dashboard.review_candidate_ready or dashboard.review_candidate_apply_button.disabled:
         _fail("Clean existing GitHub GDScript should allow explicitly reviewed AI application")
         return
+    if dashboard.review_candidate_diff_preview == null or not dashboard.review_candidate_diff_preview.text.contains("- 2  var hp := 10") or not dashboard.review_candidate_diff_preview.text.contains("+ 2  var hp := 42"):
+        _fail("KI review confirmation must display old and proposed source lines")
+        return
     dashboard.github_loaded_sha = "changedsha"
     dashboard._apply_ai_review_candidate()
     if dashboard.editor.text != dashboard.github_original_content:
