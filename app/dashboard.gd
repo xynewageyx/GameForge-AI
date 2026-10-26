@@ -80,6 +80,14 @@ var pending_analysis: Dictionary = {}
 var analysis_source_snapshot: Dictionary = {}
 var ai_draft_code: String = ""
 var ai_draft_project: String = ""
+var review_candidate_code: String = ""
+var review_candidate_project: String = ""
+var review_candidate_origin: String = ""
+var review_candidate_target_path: String = ""
+var review_candidate_target_sha: String = ""
+var review_candidate_ready: bool = false
+var review_candidate_label: Label
+var review_candidate_apply_button: Button
 var project_names: Array[String] = ["GameForge AI", "Titan Legends", "MangaForge AI"]
 var file_names: Array[String] = ["main.gd", "notes.txt"]
 
@@ -284,6 +292,7 @@ func _select_project(name: String) -> void:
     _autosave_now()
     _remember_ai_draft()
     if name != active_project:
+        _discard_ai_review_candidate()
         pending_analysis.clear()
         analysis_source_snapshot.clear()
         _cancel_ai_request()
@@ -403,6 +412,87 @@ func _save_github_copy() -> void:
     file.flush()
     status.text = "GitHub-Kopie gesichert: " + candidate.trim_prefix("user://")
     _set_current_file("GitHub: " + github_loaded_path + " (Kopie gespeichert)")
+
+## Bewusstes Übernehmen: nur gespeicherte lokale KI-Datei bzw. ungespeicherter KI-Entwurf,
+## niemals ein automatisches Ersetzen oder ein GitHub-Schreibaufruf.
+func _stage_ai_code_for_review() -> void:
+    if selected_tab != "Code" or editor == null or not is_instance_valid(editor):
+        return
+    if loaded_source != "ai_draft" and (loaded_source != "local" or not loaded_local_path.begins_with("ai_drafts/")):
+        status.text = "Bitte zuerst einen KI-Entwurf oder eine gespeicherte ai_drafts/*.gd-Datei öffnen."
+        return
+    if loaded_source == "local" and not loaded_local_path.ends_with(".gd"):
+        status.text = "Für diesen Vergleich ist ein GDScript-Entwurf erforderlich."
+        return
+    var candidate := editor.text
+    if candidate.strip_edges().is_empty() or candidate.to_utf8_buffer().size() > 1048576:
+        status.text = "Entwurf leer oder größer als 1 MB."
+        return
+    review_candidate_code = candidate
+    review_candidate_project = active_project
+    review_candidate_origin = "KI-Entwurf (ungespeichert)" if loaded_source == "ai_draft" else loaded_local_path
+    review_candidate_ready = false
+    review_candidate_target_path = ""
+    review_candidate_target_sha = ""
+    _show_review_candidate_message("KI-Vorschlag vorgemerkt: " + review_candidate_origin + " (" + str(candidate.to_utf8_buffer().size()) + " Bytes). Jetzt passende GitHub-*.gd-Datei laden, dann Vorschau und Übernahme bestätigen.")
+    status.text = "KI-Vorschlag nur lokal für GitHub-Vergleich vorgemerkt. Kein Upload."
+
+func _show_review_candidate_message(message: String) -> void:
+    if review_candidate_label != null and is_instance_valid(review_candidate_label):
+        review_candidate_label.text = message
+    if review_candidate_apply_button != null and is_instance_valid(review_candidate_apply_button):
+        review_candidate_apply_button.disabled = not review_candidate_ready
+
+func _preview_ai_review_candidate() -> void:
+    review_candidate_ready = false
+    if selected_tab != "Code" or editor == null or not is_instance_valid(editor):
+        return
+    if review_candidate_project != active_project or review_candidate_code.is_empty():
+        _show_review_candidate_message("Kein KI-Vorschlag für dieses Projekt vorgemerkt. Zuerst KI-Entwurf öffnen und vormerken.")
+        return
+    if loaded_source != "github" or github_loaded_sha.is_empty() or not github_loaded_path.ends_with(".gd") or github_loaded_repo != _github_repo():
+        _show_review_candidate_message("Zuerst die originale GDScript-Datei aus dem GitHub-Repository laden.")
+        return
+    if editor.text != github_original_content:
+        _show_review_candidate_message("GitHub-Datei hat ungespeicherte Änderungen. Erst lokal sichern und neu laden; keine automatische Überschreibung.")
+        return
+    if review_candidate_code == github_original_content:
+        _show_review_candidate_message("Der KI-Vorschlag ist bereits identisch mit der GitHub-Datei.")
+        return
+    if review_candidate_code.to_utf8_buffer().size() > 1048576:
+        _show_review_candidate_message("Vorschlag zu groß. Keine Übernahme.")
+        return
+    review_candidate_target_path = github_loaded_path
+    review_candidate_target_sha = github_loaded_sha
+    review_candidate_ready = true
+    var changes: Dictionary = _review_change_summary(github_original_content, review_candidate_code)
+    _show_review_candidate_message("VORSCHAU – GitHub-Datei " + github_loaded_path + " wird nur im EDITOR durch den vorgemerkten Vorschlag ersetzt. " + str(changes["changed"]) + " Zeilen ungefähr geändert, " + str(changes["added"]) + " hinzugefügt, " + str(changes["removed"]) + " entfernt. Der gespeicherte/ungespeicherte KI-Entwurf bleibt erhalten. GitHub wird NICHT verändert. Nur mit der nächsten Schaltfläche übernehmen.")
+    status.text = "KI-Code-Übernahme vorbereitet. Kein GitHub-Upload."
+
+func _apply_ai_review_candidate() -> void:
+    if not review_candidate_ready:
+        status.text = "Bitte zuerst die KI-Übernahme prüfen."
+        return
+    review_candidate_ready = false
+    if selected_tab != "Code" or editor == null or not is_instance_valid(editor) or review_candidate_project != active_project or review_candidate_code.is_empty():
+        _show_review_candidate_message("Übernahme abgebrochen: Projekt oder Editor geändert.")
+        return
+    if loaded_source != "github" or github_loaded_repo != _github_repo() or github_loaded_path != review_candidate_target_path or github_loaded_sha != review_candidate_target_sha or editor.text != github_original_content:
+        _show_review_candidate_message("Übernahme abgebrochen: Ziel-Datei oder Editorinhalt geändert. Erneut prüfen.")
+        return
+    _cancel_pending_upload()
+    editor.text = review_candidate_code
+    _show_review_candidate_message("KI-Vorschlag in den GitHub-Editor kopiert (nur lokal). Nun Änderungen lokal vergleichen und danach den Review-Branch-Upload separat prüfen und bestätigen.")
+    status.text = "KI-Code als lokale Editoränderung übernommen – noch NICHT auf GitHub."
+
+func _discard_ai_review_candidate() -> void:
+    review_candidate_code = ""
+    review_candidate_project = ""
+    review_candidate_origin = ""
+    review_candidate_target_path = ""
+    review_candidate_target_sha = ""
+    review_candidate_ready = false
+    _show_review_candidate_message("Vorgemerkter KI-Vorschlag verworfen. Gespeicherte Dateien bleiben erhalten.")
 
 func _github_repo() -> String:
     if active_project == "Titan Legends":
@@ -1770,6 +1860,24 @@ func _render_tab() -> void:
             _add_button("Von GitHub laden", _github_load)
             _add_button("GitHub-Ordner anzeigen", _github_browse)
             _add_button("GitHub-Datei als lokale Kopie sichern", _save_github_copy)
+            _add_label("KI-Entwurf mit vorhandener GitHub-GDScript-Datei verbinden", 20)
+            _add_button("KI-Entwurf für Review vormerken (kein Upload)", _stage_ai_code_for_review)
+            _add_button("KI-Vorschlag gegen geöffnete GitHub-Datei prüfen", _preview_ai_review_candidate)
+            review_candidate_label = Label.new()
+            review_candidate_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+            review_candidate_label.add_theme_font_size_override("font_size", 18)
+            content.add_child(review_candidate_label)
+            review_candidate_apply_button = Button.new()
+            review_candidate_apply_button.text = "KI-Vorschlag nur in Editor übernehmen (kein GitHub-Upload)"
+            review_candidate_apply_button.custom_minimum_size.y = 68
+            review_candidate_apply_button.disabled = not review_candidate_ready
+            review_candidate_apply_button.pressed.connect(_apply_ai_review_candidate)
+            content.add_child(review_candidate_apply_button)
+            _add_button("Vorgemerkten KI-Vorschlag verwerfen", _discard_ai_review_candidate)
+            if review_candidate_project == active_project and not review_candidate_code.is_empty():
+                _show_review_candidate_message("KI-Vorschlag vorgemerkt: " + review_candidate_origin + ". GitHub-*.gd-Datei öffnen, Vorschau prüfen und dann übernehmen.")
+            else:
+                _show_review_candidate_message("Noch kein KI-Entwurf für diese Sitzung vorgemerkt.")
             _add_label("Änderungen auf GitHub veröffentlichen (mit Bestätigung)", 19)
             upload_token_input = LineEdit.new()
             upload_token_input.secret = true
