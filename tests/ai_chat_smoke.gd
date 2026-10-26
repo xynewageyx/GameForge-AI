@@ -330,6 +330,24 @@ func _run_tests() -> void:
     var example_code := "extends Node\n\nfunc _ready() -> void:\n    print(\"Analyse\")\n"
     dashboard.editor.text = example_code
     dashboard._save_local_file()
+    if dashboard.code_search_input == null or dashboard.code_search_feedback == null:
+        _fail("Missing code editor search controls")
+        return
+    dashboard.code_search_input.text = "PRINT"
+    dashboard.editor.set_caret_line(0)
+    dashboard.editor.set_caret_column(0)
+    dashboard._search_code_next()
+    if not dashboard.code_search_feedback.text.contains("Zeile 4"):
+        _fail("Case insensitive CodeEdit search did not locate print in line 4")
+        return
+    dashboard.code_search_input.text = "kein_treffer_123"
+    dashboard._search_code_next()
+    if not dashboard.code_search_feedback.text.contains("Kein Treffer"):
+        _fail("Search miss should be reported without code modification")
+        return
+    if dashboard.editor.text != example_code:
+        _fail("Code search must not modify the editor document")
+        return
     dashboard.analysis_change_input.text = "Behalte alle vorhandenen Methoden bei und prüfe den Code"
     dashboard._prepare_code_analysis()
     if dashboard.selected_tab != "KI-Chat":
