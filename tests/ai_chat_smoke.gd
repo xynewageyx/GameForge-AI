@@ -528,6 +528,41 @@ func _run_tests() -> void:
     dashboard.github_original_content = ""
     dashboard.ai_draft_code = ""
     dashboard.ai_draft_project = ""
+    # Rückgängig nach KI-Vorschlag: nur lokale Editoränderung, zweimal bestätigen.
+    dashboard._select_tab("Code")
+    dashboard.loaded_source = "github"
+    dashboard.github_loaded_repo = "xynewageyx/GameForge-AI"
+    dashboard.github_loaded_path = "scripts/fighter.gd"
+    dashboard.github_loaded_sha = "original-sha"
+    dashboard.github_original_content = "extends Node\nvar hp := 10\n"
+    dashboard.editor.text = "extends Node\nvar hp := 42\n"
+    dashboard._prepare_github_restore()
+    if not dashboard.github_restore_armed or dashboard.github_restore_confirm_button.disabled:
+        _fail("GitHub restore must require separate confirmation after preview")
+        return
+    dashboard.editor.text = "extends Node\nvar hp := 50\n"
+    dashboard._confirm_github_restore()
+    if dashboard.editor.text != "extends Node\nvar hp := 50\n":
+        _fail("Restore must refuse changed editor content after preview")
+        return
+    dashboard._prepare_github_restore()
+    dashboard._confirm_github_restore()
+    if dashboard.editor.text != dashboard.github_original_content or dashboard.github_restore_armed:
+        _fail("Confirmed GitHub restore should recover original editor text only")
+        return
+    dashboard.editor.text = "extends Node\nvar hp := 12\n"
+    dashboard._prepare_github_restore()
+    dashboard._select_tab("KI-Chat")
+    if dashboard.github_restore_armed:
+        _fail("Leaving Code tab must cancel pending destructive restore")
+        return
+    dashboard._select_tab("Code")
+    dashboard.loaded_source = "local"
+    dashboard.loaded_local_path = "main.gd"
+    dashboard.github_loaded_repo = ""
+    dashboard.github_loaded_path = ""
+    dashboard.github_loaded_sha = ""
+    dashboard.github_original_content = ""
     # GitHub-Sicherheit: Upload ausschließlich auf Review-Branch, main darf unberührt bleiben.
     dashboard._select_tab("Code")
     if not dashboard.has_method("_github_send_branch_file"):
