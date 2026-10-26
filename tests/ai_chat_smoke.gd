@@ -461,6 +461,18 @@ func _run_tests() -> void:
     if int(review_remove.get("removed", -1)) != 1 or int(review_remove.get("changed", -1)) != 0:
         _fail("Removed line should be counted as removed")
         return
+    dashboard.github_loaded_path = "scripts/test.gd"
+    var local_diff: String = dashboard._review_local_diff_text("extends Node\nvar hp = 10\n", "extends Node\nvar hp = 25\n")
+    if not local_diff.contains("- 2  var hp = 10") or not local_diff.contains("+ 2  var hp = 25"):
+        _fail("Local GitHub review must show old and new lines")
+        return
+    if dashboard._review_local_diff_text("same", "same").contains("Alte Zeilen"):
+        _fail("Unchanged GitHub file must not show a misleading diff")
+        return
+    if local_diff.contains("Bearer") or not local_diff.contains("kein Upload"):
+        _fail("Local diff must not trigger or suggest a GitHub upload")
+        return
+    dashboard.github_loaded_path = ""
     # GitHub-Sicherheit: Upload ausschließlich auf Review-Branch, main darf unberührt bleiben.
     dashboard._select_tab("Code")
     if not dashboard.has_method("_github_send_branch_file"):
