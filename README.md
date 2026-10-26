@@ -259,6 +259,12 @@ Die Vorschau verarbeitet Inhalte **ausschließlich im lokalen App-Speicher**, st
 
 In der **Code**-Ansicht zeigt GameForge AI nach **„Änderung prüfen“** eine kompakte Übersicht der geplanten Übertragung an: Repository, betroffene Datei, ihren geprüften SHA-Hash, Dateigröße und die ungefähre Anzahl hinzugefügter, entfernter oder ersetzter Zeilen. Die Zählung basiert auf gemeinsamem Anfang und Ende der Dateizeilen und ist **keine vollständige Diff-Analyse**; bei mehreren voneinander getrennten Änderungen können die Werte ungenau sein. Quelltext oder Schlüssel werden in dieser Übersicht nicht ausgegeben. Die finale Änderung wird weiterhin nur nach ausdrücklicher Bestätigung auf einen neuen Review-Branch geschrieben, niemals automatisch auf `main`.
 
+## Prüfen, ob ein GitHub-Review-Commit wirklich erfolgreich war
+
+Beim Upload einer geänderten Datei in einen `gameforge/review-…`-Branch meldet GameForge AI **erst dann Erfolg**, wenn die GitHub-Contents-API sowohl einen zur erwarteten Datei passenden Pfad als auch einen neuen Datei-Hash und einen Commit-Hash zurückgibt. Unvollständige Antworten oder Antworten für einen anderen Pfad gelten als **unklar**, nicht als Erfolg. In diesem Fall erscheint der betroffene Branch zur manuellen Kontrolle; ein Pull-Request-Link wird nicht für diesen Upload freigegeben. Beginnt eine neue bestätigte Übertragung, wird der frühere Erfolgsstatus zurückgesetzt, damit kein alter Review-Commit als neuer Erfolg missverstanden wird.
+
+Die neue Prüfung ist eine Bestätigung der API-Antwort, **kein unabhängiger Nachweis einer erfolgreichen GitHub-Änderung auf dem Android-Gerät**. Diese muss weiterhin über den tatsächlichen GitHub-Branch und anschließende Tests kontrolliert werden.
+
 ## Pull Request aus einem bestätigten Review-Commit vorbereiten
 
 Nach einem **erfolgreich bestätigten Datei-Commit** im Review-Branch kannst du im Reiter **Code** auf **„Pull Request aus bestätigtem Review-Commit vorbereiten“** tippen. GameForge AI öffnet die GitHub-Vergleichsseite `main...gameforge/review-…` des aktiven Repositorys im Android-Browser. Auf GitHub lassen sich die Änderungen vor der Erstellung eines Pull Requests noch einmal kontrollieren. Das Öffnen dieser Seite allein erstellt **keinen Pull Request, führt keinen Merge durch und verändert nicht main**; du musst die folgenden GitHub-Schritte selbst bestätigen.
