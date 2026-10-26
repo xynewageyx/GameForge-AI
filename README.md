@@ -226,6 +226,12 @@ Während der App-Sitzung kann ein noch nicht gespeicherter KI-Entwurf über **Un
 
 **Wichtig:** Die KI-Datei ist ein lokaler Textentwurf. Sie wird **nicht** automatisch in die aktive Godot-Spielszene eingebunden, nicht ausgeführt und nicht auf GitHub hochgeladen. Die KI kann Fehler enthalten; alle Codeänderungen müssen überprüft und getestet werden. Für einen anschließenden GitHub-Commit wird ein eigener, bestätigter Upload-Vorgang benötigt. Diese neue Funktion muss noch auf Android getestet werden.
 
+## KI-Änderungen im GitHub-Editor sicher zurücksetzen
+
+Für eine aus GitHub geladene Textdatei gibt es in **Code** jetzt **„Zurücksetzen auf geladenen GitHub-Stand prüfen“**. Die App zeigt zuerst ausdrücklich an, dass alle aktuellen ungespeicherten lokalen Änderungen im Editor verloren gehen würden. Erst mit einer **zweiten Bestätigung** über **„Lokale Änderungen verwerfen – verbindlich bestätigen“** wird der Editorinhalt auf den ursprünglichen, aus GitHub geladenen Text zurückgesetzt. Vorher bei Bedarf **„Editorinhalt als Backup kopieren“** oder **„GitHub-Datei als lokale Kopie sichern“** verwenden.
+
+Die Bestätigung wird ungültig, sobald Datei, Editorinhalt oder Datei-SHA nicht mehr übereinstimmen, der Reiter gewechselt wird oder ein Upload läuft. Nach erfolgreichem Zurücksetzen wird die zugehörige lokale Wiederherstellungssicherung der verworfenen Änderungen gelöscht. **Es erfolgt kein GitHub-Commit, kein Zurücksetzen auf dem Server und keine KI-Anfrage.** Dieses Zurücksetzen ist **nicht** das Rückgängigmachen eines bereits erstellten GitHub-Commits oder einer Pull-Request-Übernahme.
+
 ## KI-Vorschlag vor der Übernahme direkt vergleichen
 
 Die Prüfung **„KI-Vorschlag gegen geöffnete GitHub-Datei prüfen“** zeigt jetzt zusätzlich in einem nur lesbaren Textfeld eine **lokale Vorher-/Nachher-Vorschau**: alte Zeilen mit `-`, vorgeschlagene KI-Zeilen mit `+`. Die Übernahme-Schaltfläche bleibt gesperrt, bis die Prüfbedingungen erfüllt sind. Bei fehlerhaftem Projekt, veränderter Ziel-Datei oder verworfenem Vorschlag wird die bisherige Vorschau entfernt. Es gibt dabei **keinen automatischen GitHub-Upload**. Die Ausschnitte sind auf 20 Zeilen pro Seite und 220 Zeichen je Zeile begrenzt; bei vielen verstreuten Änderungen ist es kein vollständiger semantischer Git-Diff.
