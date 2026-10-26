@@ -858,6 +858,7 @@ func _confirm_github_upload() -> void:
         _cancel_pending_upload()
         status.text = "Commit-Nachricht zu lang (maximal 200 Zeichen)."
         return
+    last_review_commit_confirmed = false
     prepared_commit_message = message
     prepared_branch = "gameforge/review-" + Time.get_datetime_string_from_system(true).replace("-", "").replace(":", "").replace("T", "-") + "-" + str(Time.get_ticks_msec() % 100000)
     upload_state = "branch_base"
@@ -887,6 +888,19 @@ func _github_send_branch_file() -> void:
         _review_upload_failure("Review-Branch erstellt, Datei-Upload konnte nicht starten (" + str(err) + ").", true)
         return
     status.text = "Übertrage Änderung in Review-Branch " + prepared_branch + "..."
+
+func _is_confirmed_review_upload_response(response: Variant, expected_path: String) -> bool:
+    if not response is Dictionary or expected_path.is_empty():
+        return false
+    var content_info: Variant = response.get("content", {})
+    var commit_info: Variant = response.get("commit", {})
+    if not content_info is Dictionary or not commit_info is Dictionary:
+        return false
+    if str(content_info.get("path", "")) != expected_path:
+        return false
+    if str(content_info.get("sha", "")).is_empty() or str(commit_info.get("sha", "")).is_empty():
+        return false
+    return true
 
 func _github_upload_response(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
     var stage := upload_state
@@ -958,16 +972,8 @@ func _github_upload_response(result: int, code: int, _headers: PackedStringArray
             status.text = "GitHub-Upload fehlgeschlagen: HTTP " + str(code)
         _review_upload_failure("GitHub-Datei-Upload nicht bestätigt. " + message.substr(0, 150), true)
         return
-    if not data is Dictionary:
-        _review_upload_failure("GitHub-Antwort unklar, Commit nicht bestätigt.", true)
-        return
-    var content_info: Variant = data.get("content", {})
-    if not content_info is Dictionary:
-        _review_upload_failure("GitHub-Antwort enthält keinen Datei-Commit.", true)
-        return
-    var new_sha := str(content_info.get("sha", ""))
-    if new_sha.is_empty():
-        _review_upload_failure("Neuer Datei-Hash fehlt, Commit nicht bestätigt.", true)
+    if not _is_confirmed_review_upload_response(data, prepared_path):
+        _review_upload_failure("GitHub-Antwort ohne passenden Datei-Pfad, Datei-Hash oder Commit-Hash. Erfolg nicht bestätigt.", true)
         return
     # Der Editor bleibt auf main bezogen; kein stiller Wechsel der geladenen Dateiversion.
     upload_state = ""
