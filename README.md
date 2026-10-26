@@ -66,6 +66,10 @@ Die Oberfläche hat größere Scrollbalken (mindestens 46 Godot-UI-Pixel) und ei
 
 Bitte nach einem erfolgreichen GitHub-Actions-Build auf Android testen. Auf dem Handy ist das Scrollen mit dem Finger durch freie Bereiche der Seite ebenfalls möglich; innerhalb eines TextEditors scrollt man dessen Inhalt separat. Die tatsächliche Touch-Bedienbarkeit kann erst am Gerät vollständig bestätigt werden.
 
+## Android-Editor: Text und Funktionen suchen
+
+Im Reiter **Code** unter dem Editor befindet sich ein Suchfeld mit der Schaltfläche **„Nächsten Treffer suchen“**. Die Suche ignoriert Groß-/Kleinschreibung, markiert die Fundstelle und zeigt Zeile/Spalte an. Wiederholtes Tippen springt zum nächsten Treffer und setzt nach dem letzten Fund am Dateianfang fort. Die Suche ändert den Dateiinhalt nicht und sendet keine Daten an die KI oder an GitHub.
+
 ## GDScript-Editor mit CodeEdit
 
 Die Code-Ansicht verwendet jetzt Godots `CodeEdit` statt eines einfachen Textfelds. Für `.gd`-Dateien gibt es **Zeilennummern, Syntaxhervorhebung** (Schlüsselwörter, Kommentare, Zahlen und Strings), automatische Einrückung und Klammerergänzung. Bei `.txt`-Dateien wird die GDScript-Farbgebung deaktiviert. Beim Wechsel zwischen lokalen Dateien, GitHub-Dateien und KI-Entwürfen wird die Hervorhebung aktualisiert.
