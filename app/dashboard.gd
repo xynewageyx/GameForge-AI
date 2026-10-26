@@ -704,6 +704,24 @@ func _open_last_review_branch() -> void:
         return
     OS.shell_open("https://github.com/" + last_review_repo + "/tree/" + last_review_branch)
 
+func _review_compare_url(repo: String, branch: String) -> String:
+    if repo.is_empty() or branch.is_empty() or not repo.contains("/") or not branch.begins_with("gameforge/review-"):
+        return ""
+    if branch.contains("..") or branch.contains("?") or branch.contains("#") or branch.contains(" "):
+        return ""
+    return "https://github.com/" + repo + "/compare/main..." + branch + "?expand=1"
+
+func _open_last_review_pull_request() -> void:
+    if not last_review_commit_confirmed:
+        status.text = "Noch kein erfolgreich bestätigter Datei-Commit. Erst Branch und Inhalt prüfen."
+        return
+    var url := _review_compare_url(last_review_repo, last_review_branch)
+    if url.is_empty():
+        status.text = "Ungültiger Review-Branch. Pull Request bitte direkt auf GitHub prüfen."
+        return
+    OS.shell_open(url)
+    status.text = "GitHub-Vergleich geöffnet. Pull Request wird erst nach deiner Bestätigung im Browser erstellt."
+
 func _review_upload_failure(message: String, branch_may_exist: bool) -> void:
     upload_state = ""
     if upload_confirm_button != null and is_instance_valid(upload_confirm_button):
@@ -960,7 +978,7 @@ func _github_upload_response(result: int, code: int, _headers: PackedStringArray
         upload_token_input.clear()
     if upload_preview_label != null and is_instance_valid(upload_preview_label):
         upload_preview_label.text = "Review-Branch erfolgreich: " + prepared_branch + "\nmain wurde nicht verändert. Auf GitHub Änderungen vergleichen und Pull Request eröffnen. Token-Eingabe geleert."
-    status.text = "Review-Commit erfolgreich: " + prepared_branch + " (main unverändert)"
+    status.text = "Review-Commit erfolgreich: " + prepared_branch + " (main unverändert). Pull Request kann jetzt im Browser vorbereitet werden."
 
 func _cancel_build_confirmation() -> void:
     build_ready = false
@@ -2009,6 +2027,8 @@ func _render_tab() -> void:
             upload_confirm_button.pressed.connect(_confirm_github_upload)
             content.add_child(upload_confirm_button)
             _add_button("Letzten Review-Branch auf GitHub prüfen", _open_last_review_branch)
+            _add_button("Pull Request aus bestätigtem Review-Commit vorbereiten", _open_last_review_pull_request)
+            _add_label("Der Browser zeigt einen Vergleich mit main. Es wird noch kein Pull Request erstellt oder zusammengeführt.", 17)
             _add_label("Es wird ein neuer gameforge/review-Branch erzeugt. main bleibt unverändert. Für den Datei-Commit ist Contents: write erforderlich; Pull Request später auf GitHub prüfen. Token nicht speichern oder teilen.", 17)
             github_list = VBoxContainer.new()
             github_list.add_theme_constant_override("separation", 8)
