@@ -604,6 +604,23 @@ func _run_tests() -> void:
         return
     dashboard.prepared_repo = ""
     dashboard.prepared_branch = ""
+    # Ein Pull Request darf erst nach bestätigtem GitHub-Datei-Commit vorbereitet werden.
+    var expected_compare: String = dashboard._review_compare_url("xynewageyx/TitanLegend", "gameforge/review-20261026-1")
+    if expected_compare != "https://github.com/xynewageyx/TitanLegend/compare/main...gameforge/review-20261026-1?expand=1":
+        _fail("GitHub PR compare link must target main and the review branch")
+        return
+    if dashboard._review_compare_url("xynewageyx/TitanLegend", "../main") != "":
+        _fail("Unsafe branch must not generate a PR link")
+        return
+    dashboard.last_review_repo = "xynewageyx/TitanLegend"
+    dashboard.last_review_branch = "gameforge/review-20261026-1"
+    dashboard.last_review_commit_confirmed = false
+    dashboard._open_last_review_pull_request()
+    if not dashboard.status.text.contains("kein erfolgreich bestätigter"):
+        _fail("PR comparison must require a confirmed file commit")
+        return
+    dashboard.last_review_repo = ""
+    dashboard.last_review_branch = ""
     # GitHub-Sicherheit: Upload ausschließlich auf Review-Branch, main darf unberührt bleiben.
     dashboard._select_tab("Code")
     if not dashboard.has_method("_github_send_branch_file"):
