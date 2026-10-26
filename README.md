@@ -226,6 +226,12 @@ Während der App-Sitzung kann ein noch nicht gespeicherter KI-Entwurf über **Un
 
 **Wichtig:** Die KI-Datei ist ein lokaler Textentwurf. Sie wird **nicht** automatisch in die aktive Godot-Spielszene eingebunden, nicht ausgeführt und nicht auf GitHub hochgeladen. Die KI kann Fehler enthalten; alle Codeänderungen müssen überprüft und getestet werden. Für einen anschließenden GitHub-Commit wird ein eigener, bestätigter Upload-Vorgang benötigt. Diese neue Funktion muss noch auf Android getestet werden.
 
+## Code-Änderungen lokal auf Android vergleichen
+
+Im Reiter **Code** gibt es jetzt **„Änderungen lokal vergleichen (kein Upload)“**. Nach dem Laden einer GitHub-Textdatei zeigt GameForge AI einen begrenzten Ausschnitt der ursprünglichen und der bearbeiteten Zeilen in einem nur lesbaren Feld an. Alte Zeilen beginnen mit `-`, neue Zeilen mit `+`. Angezeigt werden höchstens 20 Zeilen je Seite und maximal 220 Zeichen pro Zeile. Die Darstellung nutzt gemeinsame Anfangs- und Endbereiche und ist **kein vollständiger Git-Diff**; bei mehreren getrennten Änderungen können dazwischen unveränderte Zeilen auftauchen.
+
+Die Vorschau verarbeitet Inhalte **ausschließlich im lokalen App-Speicher**, startet weder eine KI- noch eine GitHub-Anfrage und verändert weder Quelltext noch Repository. Dennoch können sensible Codezeilen im Bildschirm sichtbar sein – Bildschirmfotos sorgfältig prüfen. Erst die separate Schaltfläche **„Änderung prüfen“** führt eine GitHub-Versionskontrolle aus, und nur die darauf folgende ausdrückliche Bestätigung erzeugt einen Review-Branch. Der echte Upload bleibt auf Android zu testen.
+
 ## Änderungen vor dem GitHub-Commit prüfen
 
 In der **Code**-Ansicht zeigt GameForge AI nach **„Änderung prüfen“** eine kompakte Übersicht der geplanten Übertragung an: Repository, betroffene Datei, ihren geprüften SHA-Hash, Dateigröße und die ungefähre Anzahl hinzugefügter, entfernter oder ersetzter Zeilen. Die Zählung basiert auf gemeinsamem Anfang und Ende der Dateizeilen und ist **keine vollständige Diff-Analyse**; bei mehreren voneinander getrennten Änderungen können die Werte ungenau sein. Quelltext oder Schlüssel werden in dieser Übersicht nicht ausgegeben. Die finale Änderung wird weiterhin nur nach ausdrücklicher Bestätigung auf einen neuen Review-Branch geschrieben, niemals automatisch auf `main`.
