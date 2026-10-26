@@ -415,9 +415,9 @@ func _run_tests() -> void:
     if dashboard.editor.text != generated_code:
         _fail("Generated GDScript must be transferred unchanged")
         return
+    dashboard._select_tab("KI-Chat")
     dashboard.ai_draft_project = ""
     dashboard.ai_draft_code = ""
-    dashboard._select_tab("KI-Chat")
     dashboard.ai_last_answer = ""
     dashboard._update_ai_code_transfer_hint()
     if dashboard.ai_chat_test_button == null or dashboard.ai_chat_test_label == null:
