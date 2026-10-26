@@ -584,6 +584,26 @@ func _run_tests() -> void:
     if dashboard.selected_tab != "KI-Chat":
         _fail("Navigation must resume after GitHub write completes")
         return
+    # Netzwerkausfälle nach möglicher Branch-Erstellung dürfen keinen Erfolg vortäuschen.
+    dashboard._select_tab("Code")
+    dashboard.prepared_repo = "xynewageyx/GameForge-AI"
+    dashboard.prepared_branch = "gameforge/review-offline-test"
+    dashboard.upload_state = "upload"
+    dashboard.last_review_commit_confirmed = false
+    dashboard._github_upload_response(HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray())
+    if dashboard.upload_state != "" or dashboard.last_review_commit_confirmed:
+        _fail("Unknown GitHub upload outcome must not mark a commit as successful")
+        return
+    if dashboard.upload_preview_label == null or not dashboard.upload_preview_label.text.contains("gameforge/review-offline-test"):
+        _fail("Unknown GitHub write outcome must preserve the branch name for manual checking")
+        return
+    dashboard.upload_state = "branch_create"
+    dashboard._github_upload_response(HTTPRequest.RESULT_SUCCESS, 201, PackedStringArray(), "{}".to_utf8_buffer())
+    if dashboard.upload_state != "" or not dashboard.upload_preview_label.text.contains("gameforge/review-offline-test"):
+        _fail("Incomplete branch-create response must preserve manual recovery instructions")
+        return
+    dashboard.prepared_repo = ""
+    dashboard.prepared_branch = ""
     # GitHub-Sicherheit: Upload ausschließlich auf Review-Branch, main darf unberührt bleiben.
     dashboard._select_tab("Code")
     if not dashboard.has_method("_github_send_branch_file"):
