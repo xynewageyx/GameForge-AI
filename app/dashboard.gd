@@ -359,6 +359,7 @@ func _copy_current_editor_code() -> void:
 func _set_current_file(value: String) -> void:
     if current_file_label != null and is_instance_valid(current_file_label):
         current_file_label.text = "Aktuelle Datei: " + value
+    _refresh_code_syntax()
 
 func _save_github_copy() -> void:
     if editor == null or loaded_source != "github" or github_loaded_path.is_empty():
