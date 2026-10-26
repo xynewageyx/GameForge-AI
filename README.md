@@ -163,6 +163,10 @@ Wenn nur die Modellliste `401` meldet, lässt sich ein funktionierender Chat mit
 
 Die Schaltflächen zeigen Ergebnisse getrennt an. Der Test wird beim Verlassen des Chats abgebrochen und verändert keine GitHub-Dateien. Geheimnisse werden nur in HTTP-Headern verwendet und nicht dauerhaft gespeichert.
 
+## Android: Nachrichtenfeld schnell erreichen
+
+Im Reiter **KI-Chat** steht direkt nach der Modell- und Schlüsselauswahl die Schaltfläche **„Nachricht schreiben – direkt zum Eingabefeld“**. Sie fokussiert das Nachrichtenfeld und scrollt zu ihm. Das Chatfenster mit **„Nachricht an KI senden“** befindet sich jetzt **vor** den längeren Diagnose- und Verbindungstests, damit es auch auf kleinen Android-Displays gut erreichbar ist. Der Schnellzugriff sendet selbst keine Nachricht und verändert keine Projektdateien.
+
 ## KI-Chat: OmniRoute oder Gemini
 
 Unter **KI-Chat** können zwei Anbindungen gewählt werden. Beide erzeugen nur **Antworten und Codevorschläge**. Die App führt KI-Antworten nicht automatisch aus und verändert weder Projektdateien noch GitHub ohne einen separaten Bedienvorgang.
