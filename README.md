@@ -226,6 +226,10 @@ Während der App-Sitzung kann ein noch nicht gespeicherter KI-Entwurf über **Un
 
 **Wichtig:** Die KI-Datei ist ein lokaler Textentwurf. Sie wird **nicht** automatisch in die aktive Godot-Spielszene eingebunden, nicht ausgeführt und nicht auf GitHub hochgeladen. Die KI kann Fehler enthalten; alle Codeänderungen müssen überprüft und getestet werden. Für einen anschließenden GitHub-Commit wird ein eigener, bestätigter Upload-Vorgang benötigt. Diese neue Funktion muss noch auf Android getestet werden.
 
+## Änderungen vor dem GitHub-Commit prüfen
+
+In der **Code**-Ansicht zeigt GameForge AI nach **„Änderung prüfen“** eine kompakte Übersicht der geplanten Übertragung an: Repository, betroffene Datei, ihren geprüften SHA-Hash, Dateigröße und die ungefähre Anzahl hinzugefügter, entfernter oder ersetzter Zeilen. Die Zählung basiert auf gemeinsamem Anfang und Ende der Dateizeilen und ist **keine vollständige Diff-Analyse**; bei mehreren voneinander getrennten Änderungen können die Werte ungenau sein. Quelltext oder Schlüssel werden in dieser Übersicht nicht ausgegeben. Die finale Änderung wird weiterhin nur nach ausdrücklicher Bestätigung auf einen neuen Review-Branch geschrieben, niemals automatisch auf `main`.
+
 ## Sicherer GitHub-Review-Branch statt Direkt-Commit auf main
 
 In **Code** zunächst eine bestehende Textdatei über den GitHub-Dateibrowser öffnen, eine Änderung machen und einen GitHub-Token mit **Contents: Read and write** für das entsprechende Repository eingeben. Über **„Änderung prüfen“** prüft die App den ursprünglichen Datei-Hash gegen die aktuelle GitHub-Version. Erst nach der ausdrücklichen Bestätigung **„Review-Branch erstellen und Änderung hochladen“** wird ein neuer Branch `gameforge/review-…` vom aktuellen `main` erzeugt und **nur in diesem Branch** die geänderte Datei committed. GitHubs `contents`-API erhält den expliziten Parameter `branch`; ohne diesen würde ein Update den Standardbranch ändern.
