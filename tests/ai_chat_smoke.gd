@@ -563,6 +563,27 @@ func _run_tests() -> void:
     dashboard.github_loaded_path = ""
     dashboard.github_loaded_sha = ""
     dashboard.github_original_content = ""
+    # Während eines nicht mehr abbrechbaren GitHub-Schreibaufrufs darf die UI nicht wechseln.
+    dashboard._select_tab("Code")
+    dashboard.upload_state = "branch_create"
+    dashboard._select_tab("KI-Chat")
+    if dashboard.selected_tab != "Code" or dashboard.upload_state != "branch_create":
+        _fail("Branch create must keep Code controls alive until response arrives")
+        return
+    dashboard._select_project("Titan Legends")
+    if dashboard.active_project != "GameForge AI":
+        _fail("Project switch must be blocked during branch creation")
+        return
+    dashboard.upload_state = "upload"
+    dashboard._select_tab("KI-Chat")
+    if dashboard.selected_tab != "Code" or dashboard.upload_state != "upload":
+        _fail("Review file upload must block navigation until response arrives")
+        return
+    dashboard.upload_state = ""
+    dashboard._select_tab("KI-Chat")
+    if dashboard.selected_tab != "KI-Chat":
+        _fail("Navigation must resume after GitHub write completes")
+        return
     # GitHub-Sicherheit: Upload ausschließlich auf Review-Branch, main darf unberührt bleiben.
     dashboard._select_tab("Code")
     if not dashboard.has_method("_github_send_branch_file"):
