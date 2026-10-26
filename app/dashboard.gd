@@ -251,6 +251,9 @@ func _scroll_text_page(area: TextEdit, direction: int) -> void:
     area.scroll_vertical = clampf(area.scroll_vertical + float(direction) * count, 0.0, limit)
 
 func _select_tab(tab: String) -> void:
+    if _github_write_is_in_progress() and tab != selected_tab:
+        status.text = "GitHub-Änderung läuft. Bitte im Code-Reiter bleiben und Ergebnis prüfen."
+        return
     _reset_github_restore_confirmation()
     if selected_tab == "Code":
         _autosave_now()
@@ -297,6 +300,9 @@ func _add_button(caption: String, callback: Callable) -> void:
     content.add_child(button)
 
 func _select_project(name: String) -> void:
+    if _github_write_is_in_progress() and name != active_project:
+        status.text = "GitHub-Änderung läuft. Projektwechsel bis zur Antwort gesperrt."
+        return
     _autosave_now()
     _remember_ai_draft()
     if name != active_project:
@@ -668,8 +674,11 @@ func _github_response(result: int, code: int, _headers: PackedStringArray, body:
     _set_current_file("GitHub: " + github_loaded_path + " (nur lesen)")
     status.text = "GitHub-Datei geladen: " + github_loaded_path + " (nur lesen)"
 
+func _github_write_is_in_progress() -> bool:
+    return upload_state == "branch_create" or upload_state == "upload"
+
 func _cancel_pending_upload() -> void:
-    if upload_state == "upload" or upload_state == "branch_create":
+    if _github_write_is_in_progress():
         return
     if upload_state == "preflight" or upload_state == "branch_base":
         upload_request.cancel_request()
