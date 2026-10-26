@@ -43,6 +43,8 @@ var prepared_repo: String = ""
 var prepared_sha: String = ""
 var prepared_branch: String = ""
 var prepared_commit_message: String = ""
+var last_review_repo: String = ""
+var last_review_branch: String = ""
 var build_status_request: HTTPRequest
 var build_trigger_request: HTTPRequest
 var build_token_input: LineEdit
@@ -532,6 +534,12 @@ func _cancel_pending_upload() -> void:
 func _github_upload_url(repo: String, path: String) -> String:
     return "https://api.github.com/repos/" + repo + "/contents/" + path.uri_encode().replace("%2F", "/")
 
+func _open_last_review_branch() -> void:
+    if last_review_repo.is_empty() or last_review_branch.is_empty():
+        status.text = "Noch kein Review-Branch in dieser App-Sitzung erfolgreich erstellt."
+        return
+    OS.shell_open("https://github.com/" + last_review_repo + "/compare/main..." + last_review_branch)
+
 func _prepare_github_upload() -> void:
     if upload_state != "":
         status.text = "Es läuft bereits eine GitHub-Anfrage."
@@ -712,6 +720,8 @@ func _github_upload_response(result: int, code: int, _headers: PackedStringArray
         status.text = "Neuer Datei-Hash fehlt. Commit bei GitHub prüfen."
         return
     # Der Editor bleibt auf main bezogen; kein stiller Wechsel der geladenen Dateiversion.
+    last_review_repo = prepared_repo
+    last_review_branch = prepared_branch
     if upload_token_input != null and is_instance_valid(upload_token_input):
         upload_token_input.clear()
     if upload_preview_label != null and is_instance_valid(upload_preview_label):
@@ -1718,6 +1728,7 @@ func _render_tab() -> void:
             upload_confirm_button.disabled = true
             upload_confirm_button.pressed.connect(_confirm_github_upload)
             content.add_child(upload_confirm_button)
+            _add_button("Letzten Review-Branch auf GitHub vergleichen", _open_last_review_branch)
             _add_label("Es wird ein neuer gameforge/review-Branch erzeugt. main bleibt unverändert. Für den Datei-Commit ist Contents: write erforderlich; Pull Request später auf GitHub prüfen. Token nicht speichern oder teilen.", 17)
             github_list = VBoxContainer.new()
             github_list.add_theme_constant_override("separation", 8)
