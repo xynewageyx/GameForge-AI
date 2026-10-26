@@ -1352,6 +1352,47 @@ func _restore_saved_recovery(id: String) -> void:
     _set_current_file("Wiederhergestellter Entwurf aus " + original_name + " (Original unverändert)")
     status.text = "Auto-Sicherung als eigenständiger Entwurf geöffnet. Zum Behalten als NEUE Datei speichern."
 
+func _configure_code_editor() -> void:
+    if editor == null or not editor is CodeEdit:
+        return
+    var code: CodeEdit = editor as CodeEdit
+    code.gutters_draw_line_numbers = true
+    code.gutters_line_numbers_min_digits = 3
+    code.indent_automatic = true
+    code.indent_size = 4
+    code.indent_use_spaces = true
+    code.auto_brace_completion_enabled = true
+    code.auto_brace_completion_highlight_matching = true
+    code.add_theme_color_override("font_color", Color("#e2e8f0"))
+    code.add_theme_color_override("line_number_color", Color("#94a3b8"))
+    code.add_theme_color_override("current_line_color", Color("#273244"))
+    _refresh_code_syntax()
+
+func _refresh_code_syntax() -> void:
+    if editor == null or not editor is CodeEdit:
+        return
+    var name := loaded_local_path
+    if loaded_source == "github":
+        name = github_loaded_path
+    elif loaded_source == "ai_draft":
+        name = "ki_entwurf.gd"
+    if not name.to_lower().ends_with(".gd"):
+        editor.syntax_highlighter = null
+        return
+    var syntax := CodeHighlighter.new()
+    syntax.number_color = Color("#f9c784")
+    syntax.symbol_color = Color("#cbd5e1")
+    syntax.function_color = Color("#7dd3fc")
+    syntax.member_variable_color = Color("#93c5fd")
+    for keyword in ["extends", "class_name", "func", "var", "const", "signal", "enum", "if", "elif", "else", "for", "while", "match", "return", "break", "continue", "pass", "await", "in", "is", "as", "not", "and", "or", "self", "super", "static", "preload", "load"]:
+        syntax.add_keyword_color(keyword, Color("#c4b5fd"))
+    for keyword in ["true", "false", "null", "void", "int", "float", "bool", "String", "Array", "Dictionary", "Vector2", "Vector3", "Node", "Node2D", "Control"]:
+        syntax.add_keyword_color(keyword, Color("#86efac"))
+    syntax.add_color_region("#", "", Color("#94a3b8"), true)
+    syntax.add_color_region("\"", "\"", Color("#fda4af"))
+    syntax.add_color_region("'", "'", Color("#fda4af"))
+    editor.syntax_highlighter = syntax
+
 func _render_tab() -> void:
     call_deferred("_scroll_to_top")
     for child in content.get_children():
@@ -1455,7 +1496,8 @@ func _render_tab() -> void:
             current_file_label = Label.new()
             current_file_label.add_theme_font_size_override("font_size", 19)
             content.add_child(current_file_label)
-            editor = TextEdit.new()
+            editor = CodeEdit.new()
+            _configure_code_editor()
             editor.text_changed.connect(_on_editor_text_changed)
             editor.custom_minimum_size.y = 430
             editor.size_flags_horizontal = Control.SIZE_EXPAND_FILL
