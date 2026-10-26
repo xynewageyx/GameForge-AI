@@ -46,6 +46,7 @@ var prepared_branch: String = ""
 var prepared_commit_message: String = ""
 var last_review_repo: String = ""
 var last_review_branch: String = ""
+var last_review_commit_confirmed: bool = false
 var build_status_request: HTTPRequest
 var build_trigger_request: HTTPRequest
 var build_token_input: LineEdit
@@ -699,9 +700,22 @@ func _github_upload_url(repo: String, path: String) -> String:
 
 func _open_last_review_branch() -> void:
     if last_review_repo.is_empty() or last_review_branch.is_empty():
-        status.text = "Noch kein Review-Branch in dieser App-Sitzung erfolgreich erstellt."
+        status.text = "Noch kein bestätigter Review-Branch aus dieser App-Sitzung bekannt."
         return
-    OS.shell_open("https://github.com/" + last_review_repo + "/compare/main..." + last_review_branch)
+    OS.shell_open("https://github.com/" + last_review_repo + "/tree/" + last_review_branch)
+
+func _review_upload_failure(message: String, branch_may_exist: bool) -> void:
+    upload_state = ""
+    if upload_confirm_button != null and is_instance_valid(upload_confirm_button):
+        upload_confirm_button.disabled = true
+    if branch_may_exist:
+        status.text = message + " Den Review-Branch vor einem erneuten Versuch auf GitHub kontrollieren."
+        if upload_preview_label != null and is_instance_valid(upload_preview_label):
+            upload_preview_label.text = "GitHub-Schreibvorgang nicht als Datei-Commit bestätigt. Möglicher Branch: " + prepared_repo + " / " + prepared_branch + ". Keine automatische Wiederholung! Im Browser prüfen."
+    else:
+        status.text = message
+        if upload_preview_label != null and is_instance_valid(upload_preview_label):
+            upload_preview_label.text = "Kein GitHub-Schreibvorgang bestätigt."
 
 ## Safe line-count overview, not a full semantic diff; never displays source or credentials.
 func _review_change_summary(before_text: String, after_text: String) -> Dictionary:
@@ -852,9 +866,7 @@ func _github_send_branch_file() -> void:
     upload_state = "upload"
     var err := upload_request.request(_github_upload_url(prepared_repo, prepared_path), headers, HTTPClient.METHOD_PUT, payload)
     if err != OK:
-        upload_state = ""
-        status.text = "Review-Branch erstellt, Datei-Upload konnte nicht starten (" + str(err) + ")."
-        upload_preview_label.text = "Kein Datei-Commit bestätigt. GitHub-Branch prüfen."
+        _review_upload_failure("Review-Branch erstellt, Datei-Upload konnte nicht starten (" + str(err) + ").", true)
         return
     status.text = "Übertrage Änderung in Review-Branch " + prepared_branch + "..."
 
@@ -863,10 +875,7 @@ func _github_upload_response(result: int, code: int, _headers: PackedStringArray
     if stage != "preflight" and stage != "branch_base" and stage != "branch_create" and stage != "upload":
         return
     if result != HTTPRequest.RESULT_SUCCESS:
-        upload_state = ""
-        status.text = "Netzwerkfehler bei GitHub: " + str(result) + ". Status im Browser überprüfen."
-        if upload_preview_label != null and is_instance_valid(upload_preview_label):
-            upload_preview_label.text = "Anfrage nicht bestätigt."
+        _review_upload_failure("GitHub-Netzwerkfehler (" + str(result) + "). Ergebnis unklar.", stage == "branch_create" or stage == "upload")
         return
     var data: Variant = JSON.parse_string(body.get_string_from_utf8())
     if stage == "branch_base":
@@ -893,14 +902,14 @@ func _github_upload_response(result: int, code: int, _headers: PackedStringArray
         return
     if stage == "branch_create":
         if code != 201 or not data is Dictionary:
-            upload_state = ""
-            status.text = "GitHub-Branch konnte nicht erstellt werden (HTTP " + str(code) + "). Rechte Contents: write prüfen."
-            upload_preview_label.text = "Kein Datei-Commit erstellt."
+            _review_upload_failure("GitHub-Branch-Antwort HTTP " + str(code) + ". Berechtigungen und Branch-Status prüfen.", code != 401 and code != 403)
             return
         if str(data.get("ref", "")) != "refs/heads/" + prepared_branch:
-            upload_state = ""
-            status.text = "Branch-Antwort weicht ab. Kein Datei-Upload gestartet."
+            _review_upload_failure("GitHub-Branch-Antwort weicht vom erwarteten Namen ab.", true)
             return
+        last_review_repo = prepared_repo
+        last_review_branch = prepared_branch
+        last_review_commit_confirmed = false
         _github_send_branch_file()
         return
     if stage == "preflight":
@@ -919,7 +928,6 @@ func _github_upload_response(result: int, code: int, _headers: PackedStringArray
         upload_preview_label.text = "Bereit für Review-Branch:\nRepository: " + prepared_repo + "\nDatei: " + prepared_path + "\nGeprüfter Datei-Hash: " + prepared_sha.substr(0, 12) + "\nGröße: " + str(prepared_content.to_utf8_buffer().size()) + " Bytes\nZeilenübersicht (grobe Schätzung): " + str(overview["changed"]) + " geändert, " + str(overview["added"]) + " hinzugefügt, " + str(overview["removed"]) + " entfernt, ab Zeile " + str(overview["start"]) + ".\nErst nach der separaten Bestätigung wird ein Review-Branch erstellt. main bleibt unverändert."
         status.text = "Dateiversion geprüft. Bestätigung erforderlich."
         return
-    upload_state = ""
     if code != 200 and code != 201:
         var message := ""
         if data is Dictionary:
@@ -930,23 +938,24 @@ func _github_upload_response(result: int, code: int, _headers: PackedStringArray
             status.text = "GitHub HTTP " + str(code) + ": Token oder Contents-Schreibrecht prüfen."
         else:
             status.text = "GitHub-Upload fehlgeschlagen: HTTP " + str(code)
-        if upload_preview_label != null and is_instance_valid(upload_preview_label):
-            upload_preview_label.text = "Kein erfolgreicher Commit bestätigt. " + message.substr(0, 150)
+        _review_upload_failure("GitHub-Datei-Upload nicht bestätigt. " + message.substr(0, 150), true)
         return
     if not data is Dictionary:
-        status.text = "Antwort unklar. Commit bitte im GitHub-Browser prüfen."
+        _review_upload_failure("GitHub-Antwort unklar, Commit nicht bestätigt.", true)
         return
     var content_info: Variant = data.get("content", {})
     if not content_info is Dictionary:
-        status.text = "Upload-Antwort unvollständig. Commit bitte bei GitHub prüfen."
+        _review_upload_failure("GitHub-Antwort enthält keinen Datei-Commit.", true)
         return
     var new_sha := str(content_info.get("sha", ""))
     if new_sha.is_empty():
-        status.text = "Neuer Datei-Hash fehlt. Commit bei GitHub prüfen."
+        _review_upload_failure("Neuer Datei-Hash fehlt, Commit nicht bestätigt.", true)
         return
     # Der Editor bleibt auf main bezogen; kein stiller Wechsel der geladenen Dateiversion.
+    upload_state = ""
     last_review_repo = prepared_repo
     last_review_branch = prepared_branch
+    last_review_commit_confirmed = true
     if upload_token_input != null and is_instance_valid(upload_token_input):
         upload_token_input.clear()
     if upload_preview_label != null and is_instance_valid(upload_preview_label):
@@ -1999,7 +2008,7 @@ func _render_tab() -> void:
             upload_confirm_button.disabled = true
             upload_confirm_button.pressed.connect(_confirm_github_upload)
             content.add_child(upload_confirm_button)
-            _add_button("Letzten Review-Branch auf GitHub vergleichen", _open_last_review_branch)
+            _add_button("Letzten Review-Branch auf GitHub prüfen", _open_last_review_branch)
             _add_label("Es wird ein neuer gameforge/review-Branch erzeugt. main bleibt unverändert. Für den Datei-Commit ist Contents: write erforderlich; Pull Request später auf GitHub prüfen. Token nicht speichern oder teilen.", 17)
             github_list = VBoxContainer.new()
             github_list.add_theme_constant_override("separation", 8)
