@@ -11,6 +11,8 @@ var status: Label
 var navigation: HFlowContainer
 var active_project: String = "GameForge AI"
 var editor: TextEdit
+var code_search_input: LineEdit
+var code_search_feedback: Label
 var editor_baseline: String = ""
 var autosave_timer: Timer
 var autosave_feedback: Label
@@ -1353,6 +1355,52 @@ func _restore_saved_recovery(id: String) -> void:
     _set_current_file("Wiederhergestellter Entwurf aus " + original_name + " (Original unverändert)")
     status.text = "Auto-Sicherung als eigenständiger Entwurf geöffnet. Zum Behalten als NEUE Datei speichern."
 
+func _search_code_next() -> void:
+    if selected_tab != "Code" or editor == null or not is_instance_valid(editor):
+        return
+    if code_search_input == null or not is_instance_valid(code_search_input):
+        return
+    var needle := code_search_input.text.strip_edges()
+    if needle.is_empty():
+        code_search_feedback.text = "Suchbegriff eingeben."
+        return
+    if needle.contains("\n") or needle.contains("\r") or needle.length() > 160:
+        code_search_feedback.text = "Nur einzeilige Suchbegriffe mit höchstens 160 Zeichen."
+        return
+    var lines := editor.get_line_count()
+    if lines <= 0:
+        code_search_feedback.text = "Datei ist leer."
+        return
+    var start_line: int = mini(editor.get_caret_line(), lines - 1)
+    var start_column: int = editor.get_caret_column()
+    if editor.has_selection():
+        start_line = editor.get_selection_to_line()
+        start_column = editor.get_selection_to_column()
+    var query := needle.to_lower()
+    for offset in range(lines):
+        var line: int = (start_line + offset) % lines
+        var haystack := editor.get_line(line).to_lower()
+        var from_column := start_column if offset == 0 else 0
+        var found := haystack.find(query, from_column)
+        if found < 0 and offset == 0 and lines == 1:
+            found = haystack.find(query, 0)
+        if found >= 0:
+            editor.select(line, found, line, found + needle.length())
+            editor.set_caret_line(line)
+            editor.set_caret_column(found + needle.length())
+            code_search_feedback.text = "Gefunden in Zeile " + str(line + 1) + ", Spalte " + str(found + 1) + "."
+            status.text = "Code-Suche: Treffer gefunden."
+            return
+    var first_segment := editor.get_line(start_line).to_lower()
+    var wrapped := first_segment.find(query, 0)
+    if wrapped >= 0 and wrapped < start_column:
+        editor.select(start_line, wrapped, start_line, wrapped + needle.length())
+        editor.set_caret_line(start_line)
+        editor.set_caret_column(wrapped + needle.length())
+        code_search_feedback.text = "Gefunden (am Dateianfang fortgesetzt): Zeile " + str(start_line + 1) + "."
+        return
+    code_search_feedback.text = "Kein Treffer für diesen Suchbegriff."
+
 func _configure_code_editor() -> void:
     if editor == null or not editor is CodeEdit:
         return
@@ -1506,6 +1554,17 @@ func _render_tab() -> void:
             content.add_child(editor)
             _configure_touch_text_area(editor)
             _add_text_scroll_buttons(editor, "Code")
+            _add_label("Im geöffneten Code suchen", 18)
+            code_search_input = LineEdit.new()
+            code_search_input.placeholder_text = "Funktionsname oder Text eingeben"
+            code_search_input.custom_minimum_size.y = 64
+            code_search_input.text_submitted.connect(func(_value: String): _search_code_next())
+            content.add_child(code_search_input)
+            _add_button("Nächsten Treffer suchen", _search_code_next)
+            code_search_feedback = Label.new()
+            code_search_feedback.text = "Suche ohne Groß-/Kleinschreibung, mit Umbruch zum Dateianfang."
+            code_search_feedback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+            content.add_child(code_search_feedback)
             _add_button("Datei laden", _load_selected_file)
             _add_button("Lokal speichern", _save_local_file)
             _add_button("KI-Entwurf als neue Datei speichern", _save_ai_draft)
