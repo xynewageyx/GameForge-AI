@@ -371,8 +371,8 @@ func _run_tests() -> void:
     if dashboard.ai_message_input == null or dashboard.ai_send_button == null:
         _fail("Missing visible AI chat message input and send button")
         return
-    var composer_position := dashboard.ai_message_input.get_index()
-    var diagnostic_position := dashboard.ai_diagnostic_button.get_index()
+    var composer_position: int = dashboard.ai_message_input.get_index()
+    var diagnostic_position: int = dashboard.ai_diagnostic_button.get_index()
     if composer_position >= diagnostic_position:
         _fail("Chat composer must appear before connection diagnostics on Android")
         return
