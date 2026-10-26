@@ -445,6 +445,15 @@ func _run_tests() -> void:
         return
     dashboard._scroll_text_page(dashboard.ai_chat_log, 1)
     dashboard._scroll_text_page(dashboard.ai_chat_log, -1)
+    # GitHub-Sicherheit: Upload ausschließlich auf Review-Branch, main darf unberührt bleiben.
+    dashboard._select_tab("Code")
+    if not dashboard.has_method("_github_send_branch_file"):
+        _fail("Missing review branch GitHub upload method")
+        return
+    if dashboard.upload_confirm_button == null or not dashboard.upload_confirm_button.text.contains("Review-Branch"):
+        _fail("GitHub commit action must explicitly say Review-Branch")
+        return
+    dashboard._select_tab("KI-Chat")
     # Editor-Integration: Änderungen automatisch sichern, als KOPIE wiederherstellen.
     dashboard._select_tab("Code")
     dashboard.editor.text = example_code + "# unsaved mobile edit\n"
