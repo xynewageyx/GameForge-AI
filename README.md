@@ -226,6 +226,19 @@ Während der App-Sitzung kann ein noch nicht gespeicherter KI-Entwurf über **Un
 
 **Wichtig:** Die KI-Datei ist ein lokaler Textentwurf. Sie wird **nicht** automatisch in die aktive Godot-Spielszene eingebunden, nicht ausgeführt und nicht auf GitHub hochgeladen. Die KI kann Fehler enthalten; alle Codeänderungen müssen überprüft und getestet werden. Für einen anschließenden GitHub-Commit wird ein eigener, bestätigter Upload-Vorgang benötigt. Diese neue Funktion muss noch auf Android getestet werden.
 
+## KI-Vorschlag auf bestehende GitHub-Datei übertragen – mit zwei Bestätigungen
+
+Jetzt gibt es eine direkte Verbindung zwischen KI-Entwürfen und dem vorhandenen Review-Branch-Workflow:
+
+1. Das Projekt (z. B. **Titan Legends**) wählen, den KI-generierten `gdscript`-Block als Entwurf öffnen und bei Bedarf als neue `ai_drafts/*.gd`-Datei speichern.
+2. Im Reiter **Code** mit geöffnetem KI-Entwurf bzw. `ai_drafts/*.gd` auf **„KI-Entwurf für Review vormerken (kein Upload)“** tippen. Dies erstellt nur eine Kopie im Arbeitsspeicher der App.
+3. Die **ursprüngliche existierende** `.gd`-Datei aus dem GitHub-Repository öffnen, die geändert werden soll. Diese darf im Editor noch keine ungespeicherten Änderungen besitzen.
+4. **„KI-Vorschlag gegen geöffnete GitHub-Datei prüfen“** betätigen. Die App prüft Projekt, Repository, Endung, Datei-Hash und den ursprünglichen unveränderten Editorinhalt, zeigt eine Änderungsübersicht und verlangt eine zweite, gesonderte Bestätigung.
+5. Mit **„KI-Vorschlag nur in Editor übernehmen (kein GitHub-Upload)“** wird der Vorschlag **ausschließlich im lokalen Editor** eingesetzt. Original und Hauptbranch `main` bleiben auf GitHub unangetastet. Der vorgemerkte KI-Vorschlag wird dabei nicht verworfen.
+6. **„Änderungen lokal vergleichen (kein Upload)“** und danach **„Änderung prüfen“** verwenden. Ein GitHub-Commit in einem eigenen Review-Branch erfolgt erst nach weiterer ausdrücklicher Bestätigung mit einem berechtigten GitHub-Token. Anschließend den Branch auf GitHub vergleichen und Pull Request manuell eröffnen.
+
+Eine KI-Antwort kann falsch oder unsicher sein. Vor jeder Übernahme Code und Auswirkungen prüfen. Der Übergang und die Schutzprüfungen werden in Godot-CI offline getestet, **nicht als authentifizierter GitHub-Upload simuliert**. Wenn das Projekt gewechselt wird, löscht die App den vorgemerkten Vorschlag; dauerhaft gespeicherte Entwürfe bleiben unverändert. Es werden keine GitHub-Tokens oder Projektdateien automatisch an die KI geschickt.
+
 ## Code-Änderungen lokal auf Android vergleichen
 
 Im Reiter **Code** gibt es jetzt **„Änderungen lokal vergleichen (kein Upload)“**. Nach dem Laden einer GitHub-Textdatei zeigt GameForge AI einen begrenzten Ausschnitt der ursprünglichen und der bearbeiteten Zeilen in einem nur lesbaren Feld an. Alte Zeilen beginnen mit `-`, neue Zeilen mit `+`. Angezeigt werden höchstens 20 Zeilen je Seite und maximal 220 Zeichen pro Zeile. Die Darstellung nutzt gemeinsame Anfangs- und Endbereiche und ist **kein vollständiger Git-Diff**; bei mehreren getrennten Änderungen können dazwischen unveränderte Zeilen auftauchen.
