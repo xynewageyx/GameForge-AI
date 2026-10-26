@@ -89,6 +89,12 @@ var review_candidate_ready: bool = false
 var review_candidate_label: Label
 var review_candidate_diff_preview: TextEdit
 var review_candidate_apply_button: Button
+var github_restore_confirm_button: Button
+var github_restore_label: Label
+var github_restore_armed: bool = false
+var github_restore_target_path: String = ""
+var github_restore_target_sha: String = ""
+var github_restore_target_text: String = ""
 var project_names: Array[String] = ["GameForge AI", "Titan Legends", "MangaForge AI"]
 var file_names: Array[String] = ["main.gd", "notes.txt"]
 
@@ -245,6 +251,7 @@ func _scroll_text_page(area: TextEdit, direction: int) -> void:
     area.scroll_vertical = clampf(area.scroll_vertical + float(direction) * count, 0.0, limit)
 
 func _select_tab(tab: String) -> void:
+    _reset_github_restore_confirmation()
     if selected_tab == "Code":
         _autosave_now()
         _remember_analysis_editor()
@@ -485,10 +492,60 @@ func _apply_ai_review_candidate() -> void:
     if loaded_source != "github" or github_loaded_repo != _github_repo() or github_loaded_path != review_candidate_target_path or github_loaded_sha != review_candidate_target_sha or editor.text != github_original_content:
         _show_review_candidate_message("Übernahme abgebrochen: Ziel-Datei oder Editorinhalt geändert. Erneut prüfen.")
         return
+    _reset_github_restore_confirmation()
     _cancel_pending_upload()
     editor.text = review_candidate_code
     _show_review_candidate_message("KI-Vorschlag in den GitHub-Editor kopiert (nur lokal). Nun Änderungen lokal vergleichen und danach den Review-Branch-Upload separat prüfen und bestätigen.")
     status.text = "KI-Code als lokale Editoränderung übernommen – noch NICHT auf GitHub."
+
+func _reset_github_restore_confirmation() -> void:
+    github_restore_armed = false
+    github_restore_target_path = ""
+    github_restore_target_sha = ""
+    github_restore_target_text = ""
+    if github_restore_confirm_button != null and is_instance_valid(github_restore_confirm_button):
+        github_restore_confirm_button.disabled = true
+
+func _prepare_github_restore() -> void:
+    _reset_github_restore_confirmation()
+    if selected_tab != "Code" or editor == null or not is_instance_valid(editor):
+        return
+    if loaded_source != "github" or github_loaded_repo != _github_repo() or github_loaded_path.is_empty() or github_loaded_sha.is_empty():
+        _set_github_restore_message("Zuerst eine vorhandene GitHub-Datei öffnen.")
+        return
+    if upload_state != "":
+        _set_github_restore_message("Ein GitHub-Upload läuft oder wurde vorbereitet. Bitte erst abschließen oder abbrechen.")
+        return
+    if editor.text == github_original_content:
+        _set_github_restore_message("Der Editor entspricht bereits der ursprünglich geladenen GitHub-Datei.")
+        return
+    github_restore_target_path = github_loaded_path
+    github_restore_target_sha = github_loaded_sha
+    github_restore_target_text = editor.text
+    github_restore_armed = true
+    if github_restore_confirm_button != null and is_instance_valid(github_restore_confirm_button):
+        github_restore_confirm_button.disabled = false
+    _set_github_restore_message("ACHTUNG: Alle aktuellen lokalen Änderungen in " + github_loaded_path + " werden im Editor verworfen. Falls nötig vorher 'Editorinhalt als Backup kopieren' oder 'GitHub-Datei als lokale Kopie sichern' verwenden. Erst der zweite Knopf setzt den Editor zurück. Auf GitHub wird nichts verändert.")
+
+func _confirm_github_restore() -> void:
+    if not github_restore_armed:
+        status.text = "Zurücksetzen zuerst prüfen."
+        return
+    if selected_tab != "Code" or editor == null or not is_instance_valid(editor) or loaded_source != "github" or github_loaded_repo != _github_repo() or github_loaded_path != github_restore_target_path or github_loaded_sha != github_restore_target_sha or editor.text != github_restore_target_text or upload_state != "":
+        _reset_github_restore_confirmation()
+        _set_github_restore_message("Abgebrochen: Editor, Datei oder Uploadstatus hat sich verändert. Erneut prüfen.")
+        return
+    _reset_github_restore_confirmation()
+    editor.text = github_original_content
+    _clear_current_recovery()
+    _mark_editor_baseline()
+    _set_current_file("GitHub: " + github_loaded_path + " (ursprünglicher Stand wiederhergestellt)")
+    _set_github_restore_message("Lokaler Editor auf den ursprünglich geladenen GitHub-Inhalt zurückgesetzt. Kein GitHub-Upload.")
+    status.text = "GitHub-Original im lokalen Editor wiederhergestellt."
+
+func _set_github_restore_message(message: String) -> void:
+    if github_restore_label != null and is_instance_valid(github_restore_label):
+        github_restore_label.text = message
 
 func _discard_ai_review_candidate() -> void:
     review_candidate_code = ""
@@ -596,6 +653,7 @@ func _github_response(result: int, code: int, _headers: PackedStringArray, body:
     if file_text.contains("\u0000"):
         status.text = "Binärdatei: Bitte nur Textdateien öffnen."
         return
+    _reset_github_restore_confirmation()
     _autosave_now()
     editor.text = file_text
     _mark_editor_baseline()
@@ -1886,6 +1944,19 @@ func _render_tab() -> void:
             review_candidate_apply_button.pressed.connect(_apply_ai_review_candidate)
             content.add_child(review_candidate_apply_button)
             _add_button("Vorgemerkten KI-Vorschlag verwerfen", _discard_ai_review_candidate)
+            _add_label("GitHub-Original lokal wiederherstellen", 20)
+            _add_button("Zurücksetzen auf geladenen GitHub-Stand prüfen", _prepare_github_restore)
+            github_restore_label = Label.new()
+            github_restore_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+            github_restore_label.add_theme_font_size_override("font_size", 18)
+            github_restore_label.text = "Zum Zurücksetzen sind zwei ausdrückliche Bestätigungen erforderlich. Nur der Editor wird verändert."
+            content.add_child(github_restore_label)
+            github_restore_confirm_button = Button.new()
+            github_restore_confirm_button.text = "Lokale Änderungen verwerfen – verbindlich bestätigen"
+            github_restore_confirm_button.custom_minimum_size.y = 68
+            github_restore_confirm_button.disabled = true
+            github_restore_confirm_button.pressed.connect(_confirm_github_restore)
+            content.add_child(github_restore_confirm_button)
             if review_candidate_project == active_project and not review_candidate_code.is_empty():
                 _show_review_candidate_message("KI-Vorschlag vorgemerkt: " + review_candidate_origin + ". GitHub-*.gd-Datei öffnen, Vorschau prüfen und dann übernehmen.")
             else:
