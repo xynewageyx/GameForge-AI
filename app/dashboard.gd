@@ -66,6 +66,8 @@ var ai_pending_prompt: String = ""
 var ai_active_provider: String = "omniroute"
 var ai_selected_model: String = "auto/coding"
 var ai_last_answer: String = ""
+var ai_code_transfer_button: Button
+var ai_code_transfer_label: Label
 var ai_request_project: String = ""
 var ai_pending_is_analysis: bool = false
 var analysis_change_input: TextEdit
@@ -988,6 +990,7 @@ func _on_ai_answered(success: bool, answer: String) -> void:
             while ai_history.size() > 12:
                 ai_history.pop_front()
         ai_last_answer = answer
+        _update_ai_code_transfer_hint()
         ai_display_text += "\nKI:\n" + answer + "\n"
         if was_analysis:
             ai_display_text += "\n[Dateianalyse abgeschlossen. Quelldatei wird bei weiteren Nachrichten nicht automatisch erneut gesendet.]\n"
@@ -998,6 +1001,21 @@ func _on_ai_answered(success: bool, answer: String) -> void:
     if selected_tab == "KI-Chat" and ai_chat_log != null and is_instance_valid(ai_chat_log):
         ai_chat_log.text = ai_display_text
         ai_send_button.disabled = false
+
+func _update_ai_code_transfer_hint() -> void:
+    var script_text := AI_CODE_TOOLS.extract_first_gdscript(ai_last_answer)
+    var available := not script_text.is_empty()
+    if ai_code_transfer_button != null and is_instance_valid(ai_code_transfer_button):
+        ai_code_transfer_button.disabled = not available
+    if ai_code_transfer_label == null or not is_instance_valid(ai_code_transfer_label):
+        return
+    if available:
+        var line_count := script_text.split("\n").size()
+        ai_code_transfer_label.text = "GDScript erkannt: " + str(line_count) + " Zeilen. Zunächst nur ein separater, ungespeicherter Entwurf; Original und GitHub bleiben unverändert."
+        if ai_draft_project == active_project and not ai_draft_code.is_empty():
+            ai_code_transfer_label.text += " Achtung: Erst den bestehenden Entwurf sichern, bevor du eine weitere KI-Antwort übernimmst."
+    else:
+        ai_code_transfer_label.text = "Noch kein vollständiger gdscript-Codeblock in der letzten KI-Antwort. Für die Übernahme die KI um einen vollständigen gdscript-Codeblock bitten."
 
 func _copy_ai_answer() -> void:
     if ai_last_answer.is_empty():
@@ -1011,6 +1029,7 @@ func _clear_ai_chat() -> void:
     ai_history.clear()
     ai_display_text = ""
     ai_last_answer = ""
+    _update_ai_code_transfer_hint()
     if ai_chat_log != null and is_instance_valid(ai_chat_log):
         ai_chat_log.text = ""
     status.text = "KI-Chatverlauf dieser Sitzung gelöscht."
@@ -1022,6 +1041,9 @@ func _open_ai_answer_in_editor() -> void:
     var script_text: String = AI_CODE_TOOLS.extract_first_gdscript(ai_last_answer)
     if script_text.is_empty():
         status.text = "Kein GDScript-Codeblock gefunden. Bitte KI um Code in einem gdscript-Block."
+        return
+    if ai_draft_project == active_project and not ai_draft_code.is_empty():
+        status.text = "Ein KI-Entwurf ist noch vorhanden. Bitte zuerst im Code-Tab als neue Datei speichern oder sichern, bevor du ihn ersetzt."
         return
     ai_draft_code = script_text
     ai_draft_project = active_project
@@ -1509,6 +1531,17 @@ func _render_tab() -> void:
             ai_send_button.disabled = ai_service.call("is_busy")
             ai_send_button.pressed.connect(_send_ai_message)
             content.add_child(ai_send_button)
+            _add_label("KI-Code sicher übernehmen", 20)
+            ai_code_transfer_label = Label.new()
+            ai_code_transfer_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+            ai_code_transfer_label.add_theme_font_size_override("font_size", 18)
+            content.add_child(ai_code_transfer_label)
+            ai_code_transfer_button = Button.new()
+            ai_code_transfer_button.text = "GDScript aus letzter KI-Antwort als Entwurf öffnen"
+            ai_code_transfer_button.custom_minimum_size.y = 72
+            ai_code_transfer_button.pressed.connect(_open_ai_answer_in_editor)
+            content.add_child(ai_code_transfer_button)
+            _update_ai_code_transfer_hint()
             if ai_active_provider == "omniroute":
                 _add_button("OmniRoute-Modell auf auto umstellen (kein Teststart)", _choose_omniroute_auto_model)
                 _add_button("OmniRoute-Provider-Verbindungen öffnen", _open_omniroute_providers)
