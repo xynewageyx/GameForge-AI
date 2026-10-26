@@ -913,6 +913,19 @@ func _on_ai_chat_tested(success: bool, details: String) -> void:
         ai_chat_test_label.text = details
     status.text = "KI-Testantwort erfolgreich empfangen." if success else "KI-Chat-Test fehlgeschlagen."
 
+func _jump_to_ai_message() -> void:
+    if selected_tab != "KI-Chat" or ai_message_input == null or not is_instance_valid(ai_message_input):
+        return
+    ai_message_input.grab_focus()
+    call_deferred("_scroll_to_ai_message")
+
+func _scroll_to_ai_message() -> void:
+    if selected_tab != "KI-Chat" or ai_message_input == null or not is_instance_valid(ai_message_input):
+        return
+    if content_scroll == null or not is_instance_valid(content_scroll):
+        return
+    content_scroll.ensure_control_visible(ai_message_input)
+
 func _send_ai_message() -> void:
     if ai_message_input == null or not is_instance_valid(ai_message_input):
         return
@@ -1473,6 +1486,29 @@ func _render_tab() -> void:
             ai_key_input.custom_minimum_size.y = 64
             content.add_child(ai_key_input)
             _update_ai_key_hint()
+            _add_button("Nachricht schreiben – direkt zum Eingabefeld", _jump_to_ai_message)
+            ai_chat_log = TextEdit.new()
+            ai_chat_log.custom_minimum_size.y = 360
+            ai_chat_log.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+            ai_chat_log.add_theme_font_size_override("font_size", 20)
+            ai_chat_log.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+            ai_chat_log.editable = false
+            ai_chat_log.text = ai_display_text
+            content.add_child(ai_chat_log)
+            _configure_touch_text_area(ai_chat_log)
+            _add_text_scroll_buttons(ai_chat_log, "Chat")
+            ai_message_input = TextEdit.new()
+            ai_message_input.custom_minimum_size.y = 180
+            ai_message_input.add_theme_font_size_override("font_size", 20)
+            ai_message_input.placeholder_text = "Beschreibe eine Godot-Funktion oder stelle deine Frage..."
+            content.add_child(ai_message_input)
+            _configure_touch_text_area(ai_message_input)
+            ai_send_button = Button.new()
+            ai_send_button.text = "Nachricht an KI senden"
+            ai_send_button.custom_minimum_size.y = 72
+            ai_send_button.disabled = ai_service.call("is_busy")
+            ai_send_button.pressed.connect(_send_ai_message)
+            content.add_child(ai_send_button)
             if ai_active_provider == "omniroute":
                 _add_button("OmniRoute-Modell auf auto umstellen (kein Teststart)", _choose_omniroute_auto_model)
                 _add_button("OmniRoute-Provider-Verbindungen öffnen", _open_omniroute_providers)
@@ -1501,28 +1537,6 @@ func _render_tab() -> void:
             ai_chat_test_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
             ai_chat_test_label.add_theme_font_size_override("font_size", 18)
             content.add_child(ai_chat_test_label)
-            ai_chat_log = TextEdit.new()
-            ai_chat_log.custom_minimum_size.y = 360
-            ai_chat_log.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-            ai_chat_log.add_theme_font_size_override("font_size", 20)
-            ai_chat_log.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
-            ai_chat_log.editable = false
-            ai_chat_log.text = ai_display_text
-            content.add_child(ai_chat_log)
-            _configure_touch_text_area(ai_chat_log)
-            _add_text_scroll_buttons(ai_chat_log, "Chat")
-            ai_message_input = TextEdit.new()
-            ai_message_input.custom_minimum_size.y = 180
-            ai_message_input.add_theme_font_size_override("font_size", 20)
-            ai_message_input.placeholder_text = "Beschreibe eine Godot-Funktion oder stelle deine Frage..."
-            content.add_child(ai_message_input)
-            _configure_touch_text_area(ai_message_input)
-            ai_send_button = Button.new()
-            ai_send_button.text = "Nachricht an KI senden"
-            ai_send_button.custom_minimum_size.y = 72
-            ai_send_button.disabled = ai_service.call("is_busy")
-            ai_send_button.pressed.connect(_send_ai_message)
-            content.add_child(ai_send_button)
             if pending_analysis.get("project", "") == active_project:
                 _add_label("Vorbereitete GDScript-Dateianalyse", 23)
                 _add_label("Datei: " + str(pending_analysis.get("file", "")) + "\nQuelle: " + str(pending_analysis.get("source", "")) + "\nUmfang: " + str(pending_analysis.get("bytes", 0)) + " Bytes. Nur wenn du bestätigst, werden dieser Code und dein Änderungswunsch an den ausgewählten KI-Anbieter gesendet. Token oder Geheimnisse vorher entfernen.", 18)
