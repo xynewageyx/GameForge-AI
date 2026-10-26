@@ -226,6 +226,14 @@ Während der App-Sitzung kann ein noch nicht gespeicherter KI-Entwurf über **Un
 
 **Wichtig:** Die KI-Datei ist ein lokaler Textentwurf. Sie wird **nicht** automatisch in die aktive Godot-Spielszene eingebunden, nicht ausgeführt und nicht auf GitHub hochgeladen. Die KI kann Fehler enthalten; alle Codeänderungen müssen überprüft und getestet werden. Für einen anschließenden GitHub-Commit wird ein eigener, bestätigter Upload-Vorgang benötigt. Diese neue Funktion muss noch auf Android getestet werden.
 
+## Sicherer GitHub-Review-Branch statt Direkt-Commit auf main
+
+In **Code** zunächst eine bestehende Textdatei über den GitHub-Dateibrowser öffnen, eine Änderung machen und einen GitHub-Token mit **Contents: Read and write** für das entsprechende Repository eingeben. Über **„Änderung prüfen“** prüft die App den ursprünglichen Datei-Hash gegen die aktuelle GitHub-Version. Erst nach der ausdrücklichen Bestätigung **„Review-Branch erstellen und Änderung hochladen“** wird ein neuer Branch `gameforge/review-…` vom aktuellen `main` erzeugt und **nur in diesem Branch** die geänderte Datei committed. GitHubs `contents`-API erhält den expliziten Parameter `branch`; ohne diesen würde ein Update den Standardbranch ändern.
+
+**Die Hauptversion `main` wird nicht automatisch verändert.** Nach einem erfolgreichen Upload prüfst du die Änderungen auf GitHub und eröffnest dort bei Bedarf einen Pull Request. Das übernimmt keine App-Funktion automatisch. Der neue Branch muss in GitHub bei Nichtgebrauch bewusst aufgeräumt werden. Der Code-Editor bleibt auf den ursprünglich geladenen `main`-Stand bezogen und wechselt nach einem Commit **nicht** stillschweigend auf den Review-Branch. Für neue Änderungen die Datei erneut öffnen, um Hash-Konflikte zu vermeiden.
+
+Die Branch-Erstellung benötigt die Berechtigung zum Anlegen von Git-Refs und Schreibzugriff auf Repository-Inhalte; Repositoryregeln können zusätzliche Rechte verlangen oder den Vorgang blockieren. Token werden nicht dauerhaft gespeichert. Ein Upload kann Netzwerkfehler oder einen bereits erstellten leeren Branch hinterlassen; vor erneutem Versuch Branches auf GitHub prüfen. Die Simulation prüft UI und Syntax offline; der echte authentifizierte GitHub-Schreibpfad erfordert noch einen Android-Gerätetest.
+
 ## Entwicklung / Status
 
 - Godot: **4.7.2**, GL Compatibility Renderer.
