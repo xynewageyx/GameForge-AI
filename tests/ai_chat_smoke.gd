@@ -380,6 +380,46 @@ func _run_tests() -> void:
     if not dashboard.ai_message_input.has_focus():
         _fail("Jump-to-message button must focus the chat composer")
         return
+    if dashboard.ai_code_transfer_button == null or dashboard.ai_code_transfer_label == null:
+        _fail("KI-to-code transfer controls must be accessible near the chat composer")
+        return
+    if dashboard.ai_code_transfer_button.get_index() >= dashboard.ai_diagnostic_button.get_index():
+        _fail("KI-to-code transfer must appear before diagnostics")
+        return
+    if not dashboard.ai_code_transfer_button.disabled:
+        _fail("No KI code transfer should be active without a GDScript answer")
+        return
+    dashboard.ai_last_answer = "Eine normale KI-Antwort ohne Code."
+    dashboard._update_ai_code_transfer_hint()
+    if not dashboard.ai_code_transfer_button.disabled:
+        _fail("Plain text should not enable KI-to-code draft transfer")
+        return
+    var generated_code := "extends Node\nfunc _ready() -> void:\n    print(\"KI-Entwurf\")\n"
+    dashboard.ai_last_answer = "Hier ist der Code:\n" + fence + "gdscript\n" + generated_code + fence
+    dashboard._update_ai_code_transfer_hint()
+    if dashboard.ai_code_transfer_button.disabled or not dashboard.ai_code_transfer_label.text.contains("Zeilen"):
+        _fail("Valid GDScript response should enable visible code transfer")
+        return
+    dashboard.ai_draft_project = dashboard.active_project
+    dashboard.ai_draft_code = "extends RefCounted\n"
+    dashboard._open_ai_answer_in_editor()
+    if dashboard.selected_tab != "KI-Chat" or dashboard.ai_draft_code != "extends RefCounted\n":
+        _fail("KI draft must not silently overwrite existing unsaved draft")
+        return
+    dashboard.ai_draft_project = ""
+    dashboard.ai_draft_code = ""
+    dashboard._open_ai_answer_in_editor()
+    if dashboard.selected_tab != "Code" or dashboard.loaded_source != "ai_draft":
+        _fail("KI code should open as an unsaved draft in Code tab")
+        return
+    if dashboard.editor.text != generated_code:
+        _fail("Generated GDScript must be transferred unchanged")
+        return
+    dashboard.ai_draft_project = ""
+    dashboard.ai_draft_code = ""
+    dashboard._select_tab("KI-Chat")
+    dashboard.ai_last_answer = ""
+    dashboard._update_ai_code_transfer_hint()
     if dashboard.ai_chat_test_button == null or dashboard.ai_chat_test_label == null:
         _fail("Missing separate in-app chat test controls")
         return
