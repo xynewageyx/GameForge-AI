@@ -368,6 +368,18 @@ func _run_tests() -> void:
         _fail("Original file was not restored after review")
         return
     dashboard._select_tab("KI-Chat")
+    if dashboard.ai_message_input == null or dashboard.ai_send_button == null:
+        _fail("Missing visible AI chat message input and send button")
+        return
+    var composer_position := dashboard.ai_message_input.get_index()
+    var diagnostic_position := dashboard.ai_diagnostic_button.get_index()
+    if composer_position >= diagnostic_position:
+        _fail("Chat composer must appear before connection diagnostics on Android")
+        return
+    dashboard._jump_to_ai_message()
+    if not dashboard.ai_message_input.has_focus():
+        _fail("Jump-to-message button must focus the chat composer")
+        return
     if dashboard.ai_chat_test_button == null or dashboard.ai_chat_test_label == null:
         _fail("Missing separate in-app chat test controls")
         return
