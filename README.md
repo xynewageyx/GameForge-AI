@@ -226,6 +226,10 @@ Während der App-Sitzung kann ein noch nicht gespeicherter KI-Entwurf über **Un
 
 **Wichtig:** Die KI-Datei ist ein lokaler Textentwurf. Sie wird **nicht** automatisch in die aktive Godot-Spielszene eingebunden, nicht ausgeführt und nicht auf GitHub hochgeladen. Die KI kann Fehler enthalten; alle Codeänderungen müssen überprüft und getestet werden. Für einen anschließenden GitHub-Commit wird ein eigener, bestätigter Upload-Vorgang benötigt. Diese neue Funktion muss noch auf Android getestet werden.
 
+## KI-Vorschlag vor der Übernahme direkt vergleichen
+
+Die Prüfung **„KI-Vorschlag gegen geöffnete GitHub-Datei prüfen“** zeigt jetzt zusätzlich in einem nur lesbaren Textfeld eine **lokale Vorher-/Nachher-Vorschau**: alte Zeilen mit `-`, vorgeschlagene KI-Zeilen mit `+`. Die Übernahme-Schaltfläche bleibt gesperrt, bis die Prüfbedingungen erfüllt sind. Bei fehlerhaftem Projekt, veränderter Ziel-Datei oder verworfenem Vorschlag wird die bisherige Vorschau entfernt. Es gibt dabei **keinen automatischen GitHub-Upload**. Die Ausschnitte sind auf 20 Zeilen pro Seite und 220 Zeichen je Zeile begrenzt; bei vielen verstreuten Änderungen ist es kein vollständiger semantischer Git-Diff.
+
 ## KI-Vorschlag auf bestehende GitHub-Datei übertragen – mit zwei Bestätigungen
 
 Jetzt gibt es eine direkte Verbindung zwischen KI-Entwürfen und dem vorhandenen Review-Branch-Workflow:
