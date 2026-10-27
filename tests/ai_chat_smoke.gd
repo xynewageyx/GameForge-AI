@@ -648,6 +648,24 @@ func _run_tests() -> void:
     dashboard.prepared_repo = ""
     dashboard.prepared_path = ""
     dashboard.prepared_branch = ""
+    var read_back_file := {"type": "file", "path": "scripts/fighter.gd", "sha": "reviewfilesha"}
+    if not dashboard._is_matching_review_file(read_back_file, "scripts/fighter.gd", "reviewfilesha"):
+        _fail("Independent review read-back must verify the expected file")
+        return
+    if dashboard._is_matching_review_file(read_back_file, "scripts/other.gd", "reviewfilesha"):
+        _fail("Review read-back must reject a different path")
+        return
+    if dashboard._is_matching_review_file(read_back_file, "scripts/fighter.gd", "another-sha"):
+        _fail("Review read-back must reject a different file SHA")
+        return
+    if dashboard._is_matching_review_file({"type": "dir", "path": "scripts/fighter.gd", "sha": "reviewfilesha"}, "scripts/fighter.gd", "reviewfilesha"):
+        _fail("Review read-back must reject non-file GitHub objects")
+        return
+    dashboard.last_review_commit_confirmed = false
+    dashboard._verify_last_review_file()
+    if dashboard.review_verify_pending:
+        _fail("Review verification must not start without confirmed GitHub commit")
+        return
     # GitHub-Sicherheit: Upload ausschließlich auf Review-Branch, main darf unberührt bleiben.
     dashboard._select_tab("Code")
     if not dashboard.has_method("_github_send_branch_file"):
