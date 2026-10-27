@@ -47,6 +47,11 @@ var prepared_commit_message: String = ""
 var last_review_repo: String = ""
 var last_review_branch: String = ""
 var last_review_commit_confirmed: bool = false
+var last_review_path: String = ""
+var last_review_file_sha: String = ""
+var review_verify_request: HTTPRequest
+var review_verify_label: Label
+var review_verify_pending: bool = false
 var build_status_request: HTTPRequest
 var build_trigger_request: HTTPRequest
 var build_token_input: LineEdit
@@ -115,6 +120,10 @@ func _ready() -> void:
     upload_request.timeout = 25.0
     add_child(upload_request)
     upload_request.request_completed.connect(_github_upload_response)
+    review_verify_request = HTTPRequest.new()
+    review_verify_request.timeout = 20.0
+    add_child(review_verify_request)
+    review_verify_request.request_completed.connect(_on_review_verification_response)
     build_status_request = HTTPRequest.new()
     build_status_request.timeout = 20.0
     add_child(build_status_request)
@@ -698,6 +707,46 @@ func _cancel_pending_upload() -> void:
 func _github_upload_url(repo: String, path: String) -> String:
     return "https://api.github.com/repos/" + repo + "/contents/" + path.uri_encode().replace("%2F", "/")
 
+## Unabhängige, rein lesende Kontrolle einer bestätigten Review-Datei.
+func _verify_last_review_file() -> void:
+    if review_verify_pending:
+        status.text = "GitHub-Review-Prüfung läuft bereits."
+        return
+    if last_review_repo.is_empty() or last_review_branch.is_empty() or last_review_path.is_empty() or last_review_file_sha.is_empty() or not last_review_commit_confirmed:
+        _show_review_verification("Noch kein erfolgreich bestätigter Review-Datei-Commit in dieser App-Sitzung vorhanden.")
+        return
+    var url := _github_upload_url(last_review_repo, last_review_path) + "?ref=" + last_review_branch.uri_encode()
+    review_verify_pending = true
+    _show_review_verification("Prüfe GitHub-Review-Datei über einen unabhängigen Leseaufruf...")
+    var err := review_verify_request.request(url, ["Accept: application/vnd.github+json", "User-Agent: GameForgeAI"])
+    if err != OK:
+        review_verify_pending = false
+        _show_review_verification("Prüfung konnte nicht gestartet werden: " + str(err) + ". Branch bitte im Browser prüfen.")
+
+func _on_review_verification_response(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+    if not review_verify_pending:
+        return
+    review_verify_pending = false
+    if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+        _show_review_verification("GitHub-Leseprüfung nicht möglich (HTTP " + str(code) + ", Netzwerk " + str(result) + "). Bei privaten Repositories ist ein anonymer Leseaufruf nicht ausreichend.")
+        return
+    var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+    if not _is_matching_review_file(data, last_review_path, last_review_file_sha):
+        _show_review_verification("Review-Datei stimmt nicht mit dem bestätigten Datei-Hash überein. GitHub-Branch manuell kontrollieren.")
+        return
+    _show_review_verification("GitHub hat den erwarteten Dateipfad und Datei-Hash im Review-Branch bestätigt. main wurde durch diese Prüfung nicht verändert.")
+    status.text = "Review-Branch-Datei per GitHub-Leseaufruf bestätigt."
+
+func _is_matching_review_file(data: Variant, path: String, sha: String) -> bool:
+    if not data is Dictionary or path.is_empty() or sha.is_empty():
+        return false
+    return str(data.get("type", "")) == "file" and str(data.get("path", "")) == path and str(data.get("sha", "")) == sha
+
+func _show_review_verification(message: String) -> void:
+    if review_verify_label != null and is_instance_valid(review_verify_label):
+        review_verify_label.text = message
+    status.text = message
+
 func _open_last_review_branch() -> void:
     if last_review_repo.is_empty() or last_review_branch.is_empty():
         status.text = "Noch kein bestätigter Review-Branch aus dieser App-Sitzung bekannt."
@@ -859,6 +908,8 @@ func _confirm_github_upload() -> void:
         status.text = "Commit-Nachricht zu lang (maximal 200 Zeichen)."
         return
     last_review_commit_confirmed = false
+    last_review_path = ""
+    last_review_file_sha = ""
     prepared_commit_message = message
     prepared_branch = "gameforge/review-" + Time.get_datetime_string_from_system(true).replace("-", "").replace(":", "").replace("T", "-") + "-" + str(Time.get_ticks_msec() % 100000)
     upload_state = "branch_base"
@@ -980,6 +1031,8 @@ func _github_upload_response(result: int, code: int, _headers: PackedStringArray
     last_review_repo = prepared_repo
     last_review_branch = prepared_branch
     last_review_commit_confirmed = true
+    last_review_path = prepared_path
+    last_review_file_sha = str(data["content"]["sha"])
     if upload_token_input != null and is_instance_valid(upload_token_input):
         upload_token_input.clear()
     if upload_preview_label != null and is_instance_valid(upload_preview_label):
@@ -2033,6 +2086,12 @@ func _render_tab() -> void:
             upload_confirm_button.pressed.connect(_confirm_github_upload)
             content.add_child(upload_confirm_button)
             _add_button("Letzten Review-Branch auf GitHub prüfen", _open_last_review_branch)
+            _add_button("Review-Datei über GitHub unabhängig prüfen (nur lesen)", _verify_last_review_file)
+            review_verify_label = Label.new()
+            review_verify_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+            review_verify_label.add_theme_font_size_override("font_size", 18)
+            review_verify_label.text = "Nach einem bestätigten Review-Datei-Commit kann die App Dateipfad und Datei-Hash direkt über GitHub kontrollieren."
+            content.add_child(review_verify_label)
             _add_button("Pull Request aus bestätigtem Review-Commit vorbereiten", _open_last_review_pull_request)
             _add_label("Der Browser zeigt einen Vergleich mit main. Es wird noch kein Pull Request erstellt oder zusammengeführt.", 17)
             _add_label("Es wird ein neuer gameforge/review-Branch erzeugt. main bleibt unverändert. Für den Datei-Commit ist Contents: write erforderlich; Pull Request später auf GitHub prüfen. Token nicht speichern oder teilen.", 17)
