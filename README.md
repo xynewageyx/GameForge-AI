@@ -259,6 +259,12 @@ Die Vorschau verarbeitet Inhalte **ausschließlich im lokalen App-Speicher**, st
 
 In der **Code**-Ansicht zeigt GameForge AI nach **„Änderung prüfen“** eine kompakte Übersicht der geplanten Übertragung an: Repository, betroffene Datei, ihren geprüften SHA-Hash, Dateigröße und die ungefähre Anzahl hinzugefügter, entfernter oder ersetzter Zeilen. Die Zählung basiert auf gemeinsamem Anfang und Ende der Dateizeilen und ist **keine vollständige Diff-Analyse**; bei mehreren voneinander getrennten Änderungen können die Werte ungenau sein. Quelltext oder Schlüssel werden in dieser Übersicht nicht ausgegeben. Die finale Änderung wird weiterhin nur nach ausdrücklicher Bestätigung auf einen neuen Review-Branch geschrieben, niemals automatisch auf `main`.
 
+## Review-Datei nach Upload unabhängig per GitHub prüfen
+
+Nach einem erfolgreich bestätigten Datei-Commit steht im **Code**-Reiter zusätzlich **„Review-Datei über GitHub unabhängig prüfen (nur lesen)“** bereit. Die App ruft über GitHubs Contents-API den gespeicherten Dateipfad **im tatsächlichen `gameforge/review-…`-Branch** ab und vergleicht Dateityp, Pfad und Datei-Hash mit der Antwort des vorherigen Uploads. Ein Treffer wird erst nach einem separaten HTTP-200-Leseaufruf angezeigt. Die Prüfung führt keinen Commit und keinen Merge durch und benötigt für öffentliche Repositories keinen zusätzlichen Token.
+
+Für **private Repositories** oder GitHub-Beschränkungen kann dieser anonyme Lesezugriff mit HTTP 404/403 fehlschlagen; das bedeutet **nicht automatisch**, dass der Schreibvorgang fehlgeschlagen ist. In diesem Fall den Branch im angemeldeten GitHub-Browser öffnen. Der Abgleich beweist den Zustand zum Zeitpunkt des Leseaufrufs und ist kein vollständiger Test des gesamten Spiels. Der echte schreibende GitHub-Ablauf muss weiterhin einmal auf Android ausprobiert werden.
+
 ## Prüfen, ob ein GitHub-Review-Commit wirklich erfolgreich war
 
 Beim Upload einer geänderten Datei in einen `gameforge/review-…`-Branch meldet GameForge AI **erst dann Erfolg**, wenn die GitHub-Contents-API sowohl einen zur erwarteten Datei passenden Pfad als auch einen neuen Datei-Hash und einen Commit-Hash zurückgibt. Unvollständige Antworten oder Antworten für einen anderen Pfad gelten als **unklar**, nicht als Erfolg. In diesem Fall erscheint der betroffene Branch zur manuellen Kontrolle; ein Pull-Request-Link wird nicht für diesen Upload freigegeben. Beginnt eine neue bestätigte Übertragung, wird der frühere Erfolgsstatus zurückgesetzt, damit kein alter Review-Commit als neuer Erfolg missverstanden wird.
