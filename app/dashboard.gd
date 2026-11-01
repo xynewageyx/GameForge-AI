@@ -3,6 +3,7 @@ extends Control
 const AI_CODE_TOOLS = preload("res://app/ai_code_tools.gd")
 const EDITOR_RECOVERY = preload("res://app/editor_recovery.gd")
 const PROJECT_PREFERENCES = preload("res://app/project_preferences.gd")
+const GITHUB_FILE_SEARCH = preload("res://app/github_file_search.gd")
 
 var selected_tab: String = "Projekte"
 var tabs: Array[String] = ["Projekte", "KI-Chat", "Code", "Builds", "Einstellungen"]
@@ -24,6 +25,11 @@ var github_path_input: LineEdit
 var github_request: HTTPRequest
 var github_list: VBoxContainer
 var github_filter_input: LineEdit
+var github_search_input: LineEdit
+var github_search_feedback: Label
+var github_search_results: VBoxContainer
+var github_search_request: HTTPRequest
+var github_search_repo: String = ""
 var github_browser_entries: Array[Dictionary] = []
 var github_request_mode: String = "file"
 var current_file_label: Label
@@ -119,6 +125,11 @@ func _ready() -> void:
     github_request = HTTPRequest.new()
     add_child(github_request)
     github_request.request_completed.connect(_github_response)
+    github_search_request = HTTPRequest.new()
+    github_search_request.timeout = 25.0
+    github_search_request.body_size_limit = 8388608
+    add_child(github_search_request)
+    github_search_request.request_completed.connect(_on_github_search_response)
     upload_request = HTTPRequest.new()
     upload_request.max_redirects = 0
     upload_request.timeout = 25.0
@@ -281,6 +292,7 @@ func _select_tab(tab: String) -> void:
     _cancel_build_confirmation()
     _cancel_pending_upload()
     github_request.cancel_request()
+    github_search_request.cancel_request()
     selected_tab = tab
     _render_tab()
 
@@ -333,6 +345,7 @@ func _select_project(name: String) -> void:
     _cancel_build_confirmation()
     _cancel_pending_upload()
     github_request.cancel_request()
+    github_search_request.cancel_request()
     if not project_names.has(name):
         status.text = "Unbekanntes Projekt wurde nicht ausgewählt."
         return
@@ -691,6 +704,60 @@ func _github_parent() -> void:
 func _open_active_project_files() -> void:
     _select_tab("Code")
     _github_root()
+
+func _search_github_repository() -> void:
+    if selected_tab != "Code" or github_search_input == null:
+        return
+    var repo := _github_repo()
+    var query := github_search_input.text.strip_edges()
+    if repo.is_empty():
+        status.text = "Kein GitHub-Repository konfiguriert."
+        return
+    if query.length() < 2:
+        github_search_feedback.text = "Bitte mindestens zwei Zeichen eingeben."
+        return
+    if query.length() > 100:
+        github_search_feedback.text = "Suchbegriff zu lang (maximal 100 Zeichen)."
+        return
+    if github_search_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+        github_search_feedback.text = "Die projektweite Suche läuft bereits."
+        return
+    for child in github_search_results.get_children():
+        child.queue_free()
+    github_search_repo = repo
+    github_search_feedback.text = "Suche in allen GitHub-Ordnern (nur Dateinamen und Pfade)..."
+    var url := "https://api.github.com/repos/" + repo + "/git/trees/main?recursive=1"
+    var err := github_search_request.request(url, ["Accept: application/vnd.github+json", "User-Agent: GameForgeAI"])
+    if err != OK:
+        github_search_feedback.text = "Suche konnte nicht gestartet werden: " + str(err)
+
+func _on_github_search_response(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+    if selected_tab != "Code" or github_search_repo != _github_repo() or github_search_results == null or not is_instance_valid(github_search_results):
+        return
+    if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+        github_search_feedback.text = "GitHub-Suche fehlgeschlagen: HTTP " + str(code) + " / Netzwerk " + str(result) + "."
+        return
+    var response: Variant = JSON.parse_string(body.get_string_from_utf8())
+    if not response is Dictionary:
+        github_search_feedback.text = "GitHub-Suche: Ungültige Serverantwort."
+        return
+    var found: Dictionary = GITHUB_FILE_SEARCH.filter_tree(response, github_search_input.text, 75)
+    if not str(found.get("error", "")).is_empty():
+        github_search_feedback.text = str(found["error"])
+        return
+    var files: Array = found.get("files", [])
+    for file_item in files:
+        var path := str(file_item.get("path", ""))
+        var button := Button.new()
+        button.text = "[Datei] " + path
+        button.custom_minimum_size.y = 58
+        button.add_theme_font_size_override("font_size", 18)
+        button.pressed.connect(_github_pick.bind(path, false))
+        github_search_results.add_child(button)
+    var total := int(found.get("total_matches", 0))
+    github_search_feedback.text = str(files.size()) + " von " + str(total) + " passenden Dateien angezeigt."
+    if bool(found.get("truncated", false)):
+        github_search_feedback.text += " GitHub hat einen unvollständigen Dateibaum geliefert; Ergebnisse können fehlen."
 
 func _github_pick(path: String, is_dir: bool) -> void:
     github_path_input.text = path
@@ -1492,6 +1559,7 @@ func _open_ai_answer_in_editor() -> void:
     _cancel_build_confirmation()
     _cancel_pending_upload()
     github_request.cancel_request()
+    github_search_request.cancel_request()
     selected_tab = "Code"
     _render_tab()
     status.text = "KI-Code als Entwurf geladen. Bitte prüfen und separat speichern."
@@ -1630,6 +1698,7 @@ func _prepare_code_analysis() -> void:
     pending_analysis["source"] = source_label
     _cancel_pending_upload()
     github_request.cancel_request()
+    github_search_request.cancel_request()
     selected_tab = "KI-Chat"
     _render_tab()
     status.text = "Dateianalyse vorbereitet. Anbieter prüfen und Übertragung bewusst bestätigen."
@@ -2109,6 +2178,20 @@ func _render_tab() -> void:
             github_list = VBoxContainer.new()
             github_list.add_theme_constant_override("separation", 8)
             content.add_child(github_list)
+            _add_label("Im gesamten GitHub-Projekt suchen", 20)
+            github_search_input = LineEdit.new()
+            github_search_input.placeholder_text = "Dateiname oder Pfad, z. B. boss oder .gd"
+            github_search_input.custom_minimum_size.y = 64
+            content.add_child(github_search_input)
+            _add_button("Alle Projektordner durchsuchen (nur lesen)", _search_github_repository)
+            github_search_feedback = Label.new()
+            github_search_feedback.text = "Suche nur nach Dateinamen/Pfaden, nicht nach Code-Inhalten."
+            github_search_feedback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+            github_search_feedback.add_theme_font_size_override("font_size", 18)
+            content.add_child(github_search_feedback)
+            github_search_results = VBoxContainer.new()
+            github_search_results.add_theme_constant_override("separation", 8)
+            content.add_child(github_search_results)
             _add_button("GitHub-Hauptverzeichnis", _github_root)
             _add_button("Eine Ebene zurück", _github_parent)
             _add_button("GitHub-Datei als lokale Kopie sichern", _save_github_copy)
