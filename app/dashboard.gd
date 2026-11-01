@@ -613,6 +613,26 @@ func _github_browse() -> void:
     var err := github_request.request(url, ["Accept: application/vnd.github+json", "User-Agent: GameForgeAI"])
     status.text = "Lade Dateiliste..." if err == OK else "Anfrage fehlgeschlagen: " + str(err)
 
+func _github_root() -> void:
+    if github_path_input == null or not is_instance_valid(github_path_input):
+        return
+    github_path_input.text = ""
+    _github_browse()
+
+func _github_parent() -> void:
+    if github_path_input == null or not is_instance_valid(github_path_input):
+        return
+    var current := github_path_input.text.strip_edges().trim_prefix("/").trim_suffix("/")
+    var parent := current.get_base_dir()
+    if parent == "." or parent == "/":
+        parent = ""
+    github_path_input.text = parent
+    _github_browse()
+
+func _open_active_project_files() -> void:
+    _select_tab("Code")
+    _github_root()
+
 func _github_pick(path: String, is_dir: bool) -> void:
     github_path_input.text = path
     if is_dir:
@@ -1858,7 +1878,8 @@ func _render_tab() -> void:
             _add_label("Aktives Projekt: " + active_project, 22)
             for project_name in project_names:
                 _add_button(project_name, _select_project.bind(project_name))
-            _add_label("Lokale Arbeitsbereiche. GitHub-Synchronisierung folgt.", 18)
+            _add_label("Projektdateien über Code aus GitHub laden; lokale Dateien getrennt speichern.", 18)
+            _add_button("GitHub-Dateien des Projekts öffnen", _open_active_project_files)
         "KI-Chat":
             _add_label("Projekt: " + active_project, 21)
             _add_label("KI gibt Vorschläge. Dateien und GitHub werden niemals automatisch verändert.", 18)
@@ -2017,6 +2038,8 @@ func _render_tab() -> void:
             _add_label("Repository: " + _github_repo(), 17)
             _add_button("Von GitHub laden", _github_load)
             _add_button("GitHub-Ordner anzeigen", _github_browse)
+            _add_button("GitHub-Hauptverzeichnis", _github_root)
+            _add_button("Eine Ebene zurück", _github_parent)
             _add_button("GitHub-Datei als lokale Kopie sichern", _save_github_copy)
             _add_label("KI-Entwurf mit vorhandener GitHub-GDScript-Datei verbinden", 20)
             _add_button("KI-Entwurf für Review vormerken (kein Upload)", _stage_ai_code_for_review)
