@@ -705,6 +705,13 @@ func _open_active_project_files() -> void:
     _select_tab("Code")
     _github_root()
 
+func _jump_to_github_search() -> void:
+    if selected_tab != "Code" or github_search_input == null or not is_instance_valid(github_search_input):
+        return
+    github_search_input.grab_focus()
+    if content_scroll != null and is_instance_valid(content_scroll):
+        content_scroll.ensure_control_visible(github_search_input)
+
 func _search_github_repository() -> void:
     if selected_tab != "Code" or github_search_input == null:
         return
@@ -2091,6 +2098,7 @@ func _render_tab() -> void:
             _add_label("OmniRoute: Termux-Server auf 127.0.0.1:20128 starten und ein Modell verbinden. Gemini direkt: API-Schlüssel erforderlich. Schlüssel werden nicht gespeichert.", 17)
         "Code":
             _add_label("Projekt: " + active_project, 20)
+            _add_button("Direkt zur projektweiten GitHub-Suche", _jump_to_github_search)
             _add_label("Lokaler Code-Editor (noch keine GitHub-Synchronisierung)", 18)
             file_picker = OptionButton.new()
             file_picker.custom_minimum_size.y = 60
