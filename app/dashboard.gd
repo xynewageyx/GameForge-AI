@@ -22,6 +22,8 @@ var file_picker: OptionButton
 var github_path_input: LineEdit
 var github_request: HTTPRequest
 var github_list: VBoxContainer
+var github_filter_input: LineEdit
+var github_browser_entries: Array[Dictionary] = []
 var github_request_mode: String = "file"
 var current_file_label: Label
 var loaded_source: String = "local"
@@ -596,6 +598,53 @@ func _github_load() -> void:
     var err := github_request.request(url, ["Accept: application/vnd.github+json", "User-Agent: GameForgeAI"])
     status.text = "Lade GitHub-Datei..." if err == OK else "Anfrage fehlgeschlagen: " + str(err)
 
+func _github_browser_root() -> void:
+    if github_path_input == null or not is_instance_valid(github_path_input):
+        return
+    github_path_input.text = ""
+    _github_browse()
+
+func _github_browser_parent() -> void:
+    if github_path_input == null or not is_instance_valid(github_path_input):
+        return
+    var path := github_path_input.text.strip_edges().trim_prefix("/").trim_suffix("/")
+    var parent := path.get_base_dir()
+    github_path_input.text = "" if parent == "." or parent == "/" else parent
+    _github_browse()
+
+func _github_filter_changed(_filter: String) -> void:
+    _populate_github_list()
+
+func _populate_github_list() -> void:
+    if github_list == null or not is_instance_valid(github_list):
+        return
+    for child in github_list.get_children():
+        child.queue_free()
+    var term := ""
+    if github_filter_input != null and is_instance_valid(github_filter_input):
+        term = github_filter_input.text.strip_edges().to_lower()
+    var shown := 0
+    for kind in ["dir", "file"]:
+        for item in github_browser_entries:
+            if str(item.get("type", "")) != kind:
+                continue
+            var name := str(item.get("name", ""))
+            if not term.is_empty() and not name.to_lower().contains(term):
+                continue
+            var path := str(item.get("path", ""))
+            var button := Button.new()
+            button.text = ("[Ordner] " if kind == "dir" else "[Datei] ") + name
+            button.custom_minimum_size.y = 58
+            button.add_theme_font_size_override("font_size", 19)
+            button.pressed.connect(_github_pick.bind(path, kind == "dir"))
+            github_list.add_child(button)
+            shown += 1
+            if shown >= 100:
+                break
+        if shown >= 100:
+            break
+    status.text = "GitHub: " + str(shown) + " von " + str(github_browser_entries.size()) + " Einträgen (nur lesen)"
+
 func _github_browse() -> void:
     var repo := _github_repo()
     if repo.is_empty():
@@ -651,25 +700,14 @@ func _github_response(result: int, code: int, _headers: PackedStringArray, body:
         if not data is Array:
             status.text = "Ordner nicht gefunden."
             return
-        for child in github_list.get_children():
-            child.queue_free()
-        var count := 0
+        github_browser_entries.clear()
         for item in data:
             if not item is Dictionary:
                 continue
             var kind := str(item.get("type", ""))
-            if kind != "dir" and kind != "file":
-                continue
-            var path := str(item.get("path", ""))
-            var button := Button.new()
-            button.text = ("[Ordner] " if kind == "dir" else "[Datei] ") + str(item.get("name", ""))
-            button.custom_minimum_size.y = 54
-            button.pressed.connect(_github_pick.bind(path, kind == "dir"))
-            github_list.add_child(button)
-            count += 1
-            if count >= 100:
-                break
-        status.text = "GitHub: " + str(count) + " Einträge (nur lesen)"
+            if kind == "dir" or kind == "file":
+                github_browser_entries.append(item)
+        _populate_github_list()
         return
     if not data is Dictionary:
         status.text = "Ungültige GitHub-Antwort."
@@ -2038,6 +2076,29 @@ func _render_tab() -> void:
             _add_label("Repository: " + _github_repo(), 17)
             _add_button("Von GitHub laden", _github_load)
             _add_button("GitHub-Ordner anzeigen", _github_browse)
+            var github_folder_navigation := HBoxContainer.new()
+            github_folder_navigation.add_theme_constant_override("separation", 12)
+            content.add_child(github_folder_navigation)
+            var github_up_button := Button.new()
+            github_up_button.text = "Eine Ebene hoch"
+            github_up_button.custom_minimum_size.y = 64
+            github_up_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+            github_up_button.pressed.connect(_github_browser_parent)
+            github_folder_navigation.add_child(github_up_button)
+            var github_root_button := Button.new()
+            github_root_button.text = "Projektstamm"
+            github_root_button.custom_minimum_size.y = 64
+            github_root_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+            github_root_button.pressed.connect(_github_browser_root)
+            github_folder_navigation.add_child(github_root_button)
+            github_filter_input = LineEdit.new()
+            github_filter_input.placeholder_text = "Dateiliste filtern (Name eingeben)"
+            github_filter_input.custom_minimum_size.y = 64
+            github_filter_input.text_changed.connect(_github_filter_changed)
+            content.add_child(github_filter_input)
+            github_list = VBoxContainer.new()
+            github_list.add_theme_constant_override("separation", 8)
+            content.add_child(github_list)
             _add_button("GitHub-Hauptverzeichnis", _github_root)
             _add_button("Eine Ebene zurück", _github_parent)
             _add_button("GitHub-Datei als lokale Kopie sichern", _save_github_copy)
@@ -2118,9 +2179,6 @@ func _render_tab() -> void:
             _add_button("Pull Request aus bestätigtem Review-Commit vorbereiten", _open_last_review_pull_request)
             _add_label("Der Browser zeigt einen Vergleich mit main. Es wird noch kein Pull Request erstellt oder zusammengeführt.", 17)
             _add_label("Es wird ein neuer gameforge/review-Branch erzeugt. main bleibt unverändert. Für den Datei-Commit ist Contents: write erforderlich; Pull Request später auf GitHub prüfen. Token nicht speichern oder teilen.", 17)
-            github_list = VBoxContainer.new()
-            github_list.add_theme_constant_override("separation", 8)
-            content.add_child(github_list)
         "Builds":
             _add_label("Android APK – GitHub Actions", 24)
             _add_label("Repository: xynewageyx/GameForge-AI  |  Branch: main", 19)
