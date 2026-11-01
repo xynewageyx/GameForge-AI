@@ -115,6 +115,8 @@ jobs:
           godot --headless --path . --editor --import --quit
       - name: Test AI chat response parsing (offline)
         run: godot --headless --path . --script res://tests/ai_chat_smoke.gd
+      - name: Test active project persistence (offline)
+        run: godot --headless --path . --script res://tests/project_preferences_smoke.gd
       - name: Check Android export configuration
         run: |
           test -f export_presets.cfg
