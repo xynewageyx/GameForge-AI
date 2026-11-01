@@ -25,7 +25,8 @@ func _run_tests() -> void:
         _fail("Search returned incorrect paths or included directories")
         return
     var limited: Dictionary = SEARCH.filter_tree(tree, "boss", 2)
-    if int(limited.get("total_matches", 0)) != 3 or (limited.get("files", []) as Array).size() != 2:
+    var limited_files: Array = limited.get("files", [])
+    if int(limited.get("total_matches", 0)) != 3 or limited_files.size() != 2:
         _fail("Search result limit must not hide total match count")
         return
     var short_query: Dictionary = SEARCH.filter_tree(tree, "b")
