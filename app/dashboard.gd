@@ -2,6 +2,7 @@ extends Control
 
 const AI_CODE_TOOLS = preload("res://app/ai_code_tools.gd")
 const EDITOR_RECOVERY = preload("res://app/editor_recovery.gd")
+const PROJECT_PREFERENCES = preload("res://app/project_preferences.gd")
 
 var selected_tab: String = "Projekte"
 var tabs: Array[String] = ["Projekte", "KI-Chat", "Code", "Builds", "Einstellungen"]
@@ -109,6 +110,7 @@ var file_names: Array[String] = ["main.gd", "notes.txt"]
 func _ready() -> void:
     set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     _ensure_workspace()
+    active_project = PROJECT_PREFERENCES.load_active_project(project_names)
     autosave_timer = Timer.new()
     autosave_timer.one_shot = true
     autosave_timer.wait_time = 3.0
@@ -331,8 +333,14 @@ func _select_project(name: String) -> void:
     _cancel_build_confirmation()
     _cancel_pending_upload()
     github_request.cancel_request()
+    if not project_names.has(name):
+        status.text = "Unbekanntes Projekt wurde nicht ausgewählt."
+        return
     active_project = name
+    var preference_error: Error = PROJECT_PREFERENCES.save_active_project(active_project, project_names)
     status.text = "Aktives Projekt: " + active_project
+    if preference_error != OK:
+        status.text += " (Auswahl konnte nicht dauerhaft gespeichert werden)"
     _render_tab()
 
 func _load_selected_file() -> void:
@@ -579,6 +587,8 @@ func _github_repo() -> String:
         return "xynewageyx/TitanLegend"
     if active_project == "GameForge AI":
         return "xynewageyx/GameForge-AI"
+    if active_project == "MangaForge AI":
+        return "xynewageyx/MangaForge-AI-"
     return ""
 
 func _github_load() -> void:
